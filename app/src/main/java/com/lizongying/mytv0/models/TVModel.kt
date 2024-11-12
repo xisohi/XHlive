@@ -174,7 +174,7 @@ class TVModel(var tv: TV) : ViewModel() {
             addSource(SourceType.HLS)
         } else if (path.lowercase().endsWith(".mpd")) {
             addSource(SourceType.DASH)
-        } else if (scheme.lowercase() == "rtsp") {
+        } else if (scheme.lowercase() == "rtsp" || scheme.lowercase() == "rtp") {
             addSource(SourceType.RTSP)
         } else {
 //            addSource(SourceType.UNKNOWN)

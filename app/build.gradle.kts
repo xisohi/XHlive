@@ -94,9 +94,9 @@ task("modifySource") {
         }
 
         val url = when (net) {
-            "ipv6" -> "DEFAULT_CONFIG_URL = \"https://live.fanmingming.com/tv/m3u/ipv6.m3u\""
-            "mobile" -> "DEFAULT_CONFIG_URL = \"https://live.fanmingming.com/tv/m3u/itv.m3u\""
-            "" -> "DEFAULT_CONFIG_URL = \"https://live.fanmingming.com/tv/m3u/itv.m3u\""
+            "ipv6" -> "DEFAULT_CONFIG_URL = \"https://xhys.lcjly.cn/live.txt\""
+            "mobile" -> "DEFAULT_CONFIG_URL = \"https://xhys.lcjly.cn/live.txt\""
+            "" -> "DEFAULT_CONFIG_URL = \"https://xhys.lcjly.cn/live.txt\""
             else -> ""
         }
 
@@ -115,9 +115,9 @@ tasks.whenTaskAdded {
             println("net: $net")
 
             val url = when (net) {
-                "ipv6" -> "DEFAULT_CONFIG_URL = \"https://live.fanmingming.com/tv/m3u/ipv6.m3u\""
-                "mobile" -> "DEFAULT_CONFIG_URL = \"https://live.fanmingming.com/tv/m3u/itv.m3u\""
-                "" -> "DEFAULT_CONFIG_URL = \"https://live.fanmingming.com/tv/m3u/itv.m3u\""
+                "ipv6" -> "DEFAULT_CONFIG_URL = \"https://xhys.lcjly.cn/live.txt\""
+                "mobile" -> "DEFAULT_CONFIG_URL = \"https://xhys.lcjly.cn/live.txt\""
+                "" -> "DEFAULT_CONFIG_URL = \"https://xhys.lcjly.cn/live.txt\""
                 else -> ""
             }
 
