@@ -43,7 +43,7 @@ class UpdateManager(
                 release = releaseRequest.getRelease()
                 Log.i(TAG, "versionCode $versionCode ${release?.version_code}")
                 if (release?.version_code != null) {
-                    if (release?.version_code!! >= versionCode) {
+                    if (release?.version_code!! > versionCode) {
                         text = "最新版本：${release?.version_name}"
                         update = true
                     } else {
@@ -63,7 +63,7 @@ class UpdateManager(
     }
 
     private fun startDownload(release: ReleaseResponse) {
-        val apkName = "my-tv-0"
+        val apkName = "XHlive"
         val apkFileName = "$apkName-${release.version_name}.apk"
         val downloadManager =
             context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
