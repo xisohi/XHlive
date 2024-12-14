@@ -82,6 +82,12 @@ jobs:
           prerelease: false
           body_path: history.md
 
+      - name: Check version.json path
+        run: ls -l version.json
+
+      - name: Print version.json content
+        run: cat version.json
+
       - name: Update version
         id: update_version
         run: |
