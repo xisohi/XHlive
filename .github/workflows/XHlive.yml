@@ -92,8 +92,8 @@ jobs:
         id: update_version
         run: |
           # Use sed to update the version_code and version_name in version.json
-         sed -i 's/"version_code": [0-9]*/"version_code": '"${{ env.version_code }}"'/' version.json
-         sed -i 's/"version_name": "v[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*"/"version_name": "'"${{ env.tag_name }}"'"/' version.json
+          sed -i 's/"version_code": [0-9]*/"version_code": '"${{ env.version_code }}"'/' version.json
+          sed -i 's/"version_name": "v[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*"/"version_name": "'"${{ env.tag_name }}"'"/' version.json
 
       - name: Run build with Gradle wrapper
         run: ./gradlew clean && ./gradlew assembleRelease
