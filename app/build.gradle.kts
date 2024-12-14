@@ -58,7 +58,7 @@ fun getTag(): String {
 fun getVersionCode(): Int {
     return try {
         val arr = (getTag().replace(".", " ").replace("-", " ") + " 0").split(" ")
-        arr[0].toInt() * 16777216 + arr[1].toInt() * 65536 + arr[2].toInt() * 256 + arr[3].toInt()
+        arr[0].toInt() * 1000000 + arr[1].toInt() * 10000 + arr[2].toInt() * 100 + arr[3].toInt()
     } catch (_: Exception) {
         1
     }

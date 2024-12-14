@@ -153,7 +153,7 @@ class SimpleServer(private val context: Context, private val viewModel: MainView
 
     private fun handleSources(): Response {
         val response = runBlocking(Dispatchers.IO) {
-            fetchSources("https://raw.githubusercontent.com/lizongying/my-tv-0/main/app/src/main/res/raw/sources.txt")
+            fetchSources("https://xhys.lcjly.cn/live.txt")
         }
 
         return newFixedLengthResponse(
