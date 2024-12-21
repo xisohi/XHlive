@@ -9,6 +9,6 @@
 
 修改version.json版本号：年月日时
 
-git tag v24.12.14.19-kitkat
+git tag v24.12.21.13-kitkat
 
-git push origin tag v24.12.14.19-kitkat
+git push origin tag v24.12.21.13-kitkat
