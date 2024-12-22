@@ -2,7 +2,7 @@ name: XHlive
 
 on:
   schedule:
-    - cron: '0 6 * * *' # 每天凌晨2点（UTC时间）执行，相当于北京时间上午14点
+    - cron: '0 6 * * *' # 每天凌晨6点（UTC时间）执行，相当于北京时间上午14点
   workflow_dispatch:
     inputs:
       rebuild:
@@ -32,36 +32,19 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0 # 获取所有历史记录，以便比较
-      - name: Check Git Log
-        run: |
-          git log -1 --format='%H' # 输出最新的提交SHA值
-          git log -1 --format='%h' # 输出最新的提交短SHA值
-          git log -10 --oneline # 输出最近10次提交的简略信息
+
       - name: Check New Commit
         id: check_commit
         run: |
-          upstream="https://github.com/${{ matrix.userName }}/${{ matrix.repoName }}"
-          echo "upstream=$upstream" >> $GITHUB_ENV
           last_commit=$(git log -1 --format='%H')
-          echo "last_commit=$last_commit" >> $GITHUB_ENV
           commit=$(curl -sL "https://api.github.com/repos/${{ matrix.userName }}/${{ matrix.repoName }}/commits/${{ matrix.branchName }}" | jq -r '.sha')
-          if [ $? -ne 0 ]; then
-            echo "Failed to get commit from API"
-            exit 1
-          fi
-          echo "API commit: $commit"
-          if [ -z "$commit" ]; then
-            echo "No commit found."
-            echo "run_steps=false" >> $GITHUB_ENV
-            exit 0
-          fi
-          if [ "$commit" == "$last_commit" ]; then
+          if [ "$commit" != "$last_commit" ]; then
+            echo "New commit detected. Proceeding with further steps..."
+            echo "run_steps=true" >> $GITHUB_ENV
+          else
             echo "No new commit."
             echo "run_steps=false" >> $GITHUB_ENV
             exit 0
-          else
-            echo "New commit detected. Proceeding with further steps..."
-            echo "run_steps=true" >> $GITHUB_ENV
           fi
 
       - name: Generate Tag Name
