@@ -20,25 +20,31 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - userName: xisohi
+            repoName: XHlive
+            branchName: main
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0 # 获取所有历史记录，以便比较
 
-      - name: Check for new commits
-        id: check_commits
+      - name: Check New Commit
         run: |
-          LAST_SUCCESSFUL_RUN_SHA=$(curl -s "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs?branch=refs/heads/main&event=schedule" | jq -r '.workflow_runs[0].head_sha')
-          echo "Last successful run SHA: $LAST_SUCCESSFUL_RUN_SHA"
-          CURRENT_HEAD_SHA=$(git rev-parse HEAD)
-          echo "Current HEAD SHA: $CURRENT_HEAD_SHA"
-
-          if [ "$CURRENT_HEAD_SHA" == "$LAST_SUCCESSFUL_RUN_SHA" ]; then
-            echo "No new commits since last successful build."
+          upStream="https://github.com/${{  matrix.userName }}/${{ matrix.repoName }}"
+          echo "upStream=$upStream" >> $GITHUB_ENV
+          commit=$(curl -sL "https://api.github.com/repos/${{  matrix.userName }}/${{ matrix.repoName }}/commits/${{ matrix.branchName }}" | jq -r '.sha')
+          if [ $? -ne 0 ]; then
+            echo "Failed to get commit from API"
             exit 1
-          else
-            echo "New commits found."
+          fi
+          if [ -z "$commit" ] || ! grep -q "$commit" sn.md; then
+            echo "commit=$commit" >> $GITHUB_ENV
+            echo "commitS=${commit:0:7}" >> $GITHUB_ENV
           fi
 
       - name: Generate Tag Name
