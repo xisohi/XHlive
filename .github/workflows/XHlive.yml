@@ -47,20 +47,20 @@ jobs:
           fi
           if [ -z "$commit" ]; then
             echo "No commit found."
-            echo "::set-output name=run_steps::false"
+            echo "run_steps=false" >> $GITHUB_ENV
             exit 0
           fi
           if [ "$commit" == "$last_commit" ]; then
             echo "No new commit."
-            echo "::set-output name=run_steps::false"
+            echo "run_steps=false" >> $GITHUB_ENV
             exit 0
           else
             echo "New commit detected. Proceeding with further steps..."
-            echo "::set-output name=run_steps::true"
+            echo "run_steps=true" >> $GITHUB_ENV
           fi
 
       - name: Generate Tag Name
-        id: generate_tag
+        if: ${{ env.run_steps == 'true' }}
         run: |
           TAG_NAME="v$(date +'%y.%m.%d.%H')"
           echo "tag_name=$TAG_NAME" >> $GITHUB_ENV
@@ -68,12 +68,13 @@ jobs:
           echo "version_code=$VERSION_CODE" >> $GITHUB_ENV
 
       - name: Create Tag
-        if: steps.recheck_commits_after_update.outcome == 'success'
+        if: ${{ env.run_steps == 'true' }}
         run: |
           git tag ${{ env.tag_name }}
           git push origin ${{ env.tag_name }}
 
       - name: Set up JDK 21
+        if: ${{ env.run_steps == 'true' }}
         uses: actions/setup-java@v4
         with:
           java-version: '21'
@@ -81,6 +82,7 @@ jobs:
           cache: 'gradle'
 
       - name: Get History
+        if: ${{ env.run_steps == 'true' }}
         id: get_history
         run: |
           chmod +x history.sh
@@ -88,7 +90,7 @@ jobs:
           echo "$output" > history.md
 
       - name: Create Release
-        id: create_release
+        if: ${{ env.run_steps == 'true' }}
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -100,10 +102,11 @@ jobs:
           body_path: history.md
 
       - name: Run build with Gradle wrapper
+        if: ${{ env.run_steps == 'true' }}
         run: ./gradlew clean && ./gradlew assembleRelease
 
       - name: Sign app APK
-        id: sign_app
+        if: ${{ env.run_steps == 'true' }}
         uses: r0adkll/sign-android-release@v1
         with:
           releaseDirectory: app/build/outputs/apk/release
@@ -115,12 +118,14 @@ jobs:
           BUILD_TOOLS_VERSION: "34.0.0"
 
       - name: Set Asset Name
+        if: ${{ env.run_steps == 'true' }}
         id: set_asset_name
         run: |
           VERSION_WITHOUT_V=$(echo '${{ env.tag_name }}' | sed 's/^v//')
           echo "asset_name=XHlive.${VERSION_WITHOUT_V}.apk" >> $GITHUB_ENV
 
       - name: Upload Release Asset
+        if: ${{ env.run_steps == 'true' }}
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
