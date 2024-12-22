@@ -61,6 +61,11 @@ jobs:
           git commit -m "Update version.json"
           git push
 
+      - name: Recheckout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 获取所有历史记录，以便比较
+
       - name: Recheck for new commits  # 再次检查是否有新提交
         id: Recheck_commits
         run: |
