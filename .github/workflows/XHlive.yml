@@ -96,6 +96,14 @@ jobs:
       - name: Verify version.json update
         run: cat version.json
 
+      - name: Commit and push version.json changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add version.json
+          git commit -m "Update version.json"
+          git push
+
       - name: Run build with Gradle wrapper
         run: ./gradlew clean && ./gradlew assembleRelease
 
