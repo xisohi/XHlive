@@ -34,17 +34,29 @@ jobs:
           fetch-depth: 0 # 获取所有历史记录，以便比较
 
       - name: Check New Commit
+        id: check_commit
         run: |
-          upStream="https://github.com/${{  matrix.userName }}/${{ matrix.repoName }}"
-          echo "upStream=$upStream" >> $GITHUB_ENV
-          commit=$(curl -sL "https://api.github.com/repos/${{  matrix.userName }}/${{ matrix.repoName }}/commits/${{ matrix.branchName }}" | jq -r '.sha')
+          upstream="https://github.com/${{ matrix.userName }}/${{ matrix.repoName }}"
+          echo "upstream=$upstream" >> $GITHUB_ENV
+          last_commit=$(git log -1 --format='%H')
+          echo "last_commit=$last_commit" >> $GITHUB_ENV
+          commit=$(curl -sL "https://api.github.com/repos/${{ matrix.userName }}/${{ matrix.repoName }}/commits/${{ matrix.branchName }}" | jq -r '.sha')
           if [ $? -ne 0 ]; then
             echo "Failed to get commit from API"
             exit 1
           fi
-          if [ -z "$commit" ] || ! grep -q "$commit" sn.md; then
-            echo "commit=$commit" >> $GITHUB_ENV
-            echo "commitS=${commit:0:7}" >> $GITHUB_ENV
+          if [ -z "$commit" ]; then
+            echo "No commit found."
+            echo "::set-output name=run_steps::false"
+            exit 0
+          fi
+          if [ "$commit" == "$last_commit" ]; then
+            echo "No new commit."
+            echo "::set-output name=run_steps::false"
+            exit 0
+          else
+            echo "New commit detected. Proceeding with further steps..."
+            echo "::set-output name=run_steps::true"
           fi
 
       - name: Generate Tag Name
@@ -54,20 +66,6 @@ jobs:
           echo "tag_name=$TAG_NAME" >> $GITHUB_ENV
           VERSION_CODE="$(date +'%y%m%d%H')"
           echo "version_code=$VERSION_CODE" >> $GITHUB_ENV
-
-#      - name: Update version
-#        id: update_version
-#        run: |
-#          sed -i "s/\"version_code\": [0-9]*/\"version_code\": ${{ env.version_code }}/" version.json
-#          sed -i "s/\"version_name\": \"v[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*\"/\"version_name\": \"${{ env.tag_name }}\"/" version.json
-
-#      - name: Commit and push version.json changes
-#        run: |
-#          git config --local user.email "action@github.com"
-#          git config --local user.name "GitHub Action"
-#          git add version.json
-#          git commit -m "Update version.json"
-#          git push
 
       - name: Create Tag
         if: steps.recheck_commits_after_update.outcome == 'success'
