@@ -36,8 +36,6 @@ jobs:
             exit 1
           fi
           if [ -z "$commit" ] || ! grep -q "$commit" README.md; then
-            echo "commit=$commit" >> $GITHUB_ENV
-            echo "commitS=${commit:0:7}" >> $GITHUB_ENV
           fi
 
       - name: Generate Tag Name
@@ -62,6 +60,10 @@ jobs:
           git commit -m "Update version.json"
           git push
 
+      - name: Recheckout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 获取所有历史记录，以便比较
 
       - name: Recheck New Commit
         run: |
