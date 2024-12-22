@@ -32,13 +32,8 @@ jobs:
       - name: Check for new commits
         id: check_commits
         run: |
-          # 获取最后一次成功构建的SHA
           LAST_SUCCESSFUL_BUILD_SHA=$(curl -s "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs?branch=${{ github.ref }}&event=schedule" | jq -r '.workflow_runs[0].head_sha')
-
-          # 获取当前HEAD的SHA
           CURRENT_HEAD_SHA=$(git rev-parse HEAD)
-
-          # 比较SHA，如果相同，则没有新的提交
           if [ "$CURRENT_HEAD_SHA" == "$LAST_SUCCESSFUL_BUILD_SHA" ]; then
             echo "No new commits since last successful build."
             exit 1
@@ -50,7 +45,6 @@ jobs:
       - name: Generate Tag Name
         id: generate_tag
         run: |
-          # Generate tag name in the format vYY.MM.DD.HH
           TAG_NAME="v$(date +'%y.%m.%d.%H')"
           echo "tag_name=$TAG_NAME" >> $GITHUB_ENV
           VERSION_CODE="$(date +'%y%m%d%H')"
@@ -88,12 +82,19 @@ jobs:
       - name: Print version.json content
         run: cat version.json
 
+      - name: Print environment variables
+        run: |
+          echo "Version Code: $version_code"
+          echo "Tag Name: $tag_name"
+
       - name: Update version
         id: update_version
         run: |
-          # Use sed to update the version_code and version_name in version.json
-          sed -i 's/"version_code": [0-9]*/"version_code": '"${{ env.version_code }}"'/' version.json
-          sed -i 's/"version_name": "v[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*"/"version_name": "'"${{ env.tag_name }}"'"/' version.json
+          sed -i "s/\"version_code\": [0-9]*/\"version_code\": $version_code/" version.json
+          sed -i "s/\"version_name\": \"v[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*\"/\"version_name\": \"$tag_name\"/" version.json
+
+      - name: Verify version.json update
+        run: cat version.json
 
       - name: Run build with Gradle wrapper
         run: ./gradlew clean && ./gradlew assembleRelease
@@ -108,7 +109,6 @@ jobs:
           keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
           keyPassword: ${{ secrets.ALIAS_PASSWORD }}
         env:
-          # Override default build-tools version (29.0.3) -- optional
           BUILD_TOOLS_VERSION: "34.0.0"
 
       - name: Set Asset Name
