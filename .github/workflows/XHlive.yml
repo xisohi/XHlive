@@ -29,13 +29,11 @@ jobs:
       - name: Check for new commits
         id: check_commits
         run: |
-          # 获取最后一次成功工作流运行的HEAD SHA
-          LAST_SUCCESSFUL_RUN_SHA=$(curl -s "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs?branch=${{ github.ref }}&event=schedule" | jq -r '.workflow_runs[0].head_sha')
-          
-          # 获取当前HEAD SHA
-          CURRENT_HEAD_SHA=${{ github.sha }}
+          LAST_SUCCESSFUL_RUN_SHA=$(curl -s "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs?branch=refs/heads/main&event=schedule" | jq -r '.workflow_runs[0].head_sha')
+          echo "Last successful run SHA: $LAST_SUCCESSFUL_RUN_SHA"
+          CURRENT_HEAD_SHA=$(git rev-parse HEAD)
+          echo "Current HEAD SHA: $CURRENT_HEAD_SHA"
 
-          # 比较两次SHA，如果相同，则没有新的提交
           if [ "$CURRENT_HEAD_SHA" == "$LAST_SUCCESSFUL_RUN_SHA" ]; then
             echo "No new commits since last successful build."
             exit 1
