@@ -29,14 +29,18 @@ jobs:
       - name: Check for new commits
         id: check_commits
         run: |
-          LAST_SUCCESSFUL_BUILD_SHA=$(curl -s "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs?branch=${{ github.ref }}&event=schedule" | jq -r '.workflow_runs[0].head_sha')
-          CURRENT_HEAD_SHA=$(git rev-parse HEAD)
-          if [ "$CURRENT_HEAD_SHA" == "$LAST_SUCCESSFUL_BUILD_SHA" ]; then
+          # 获取最后一次成功工作流运行的HEAD SHA
+          LAST_SUCCESSFUL_RUN_SHA=$(curl -s "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs?branch=${{ github.ref }}&event=schedule" | jq -r '.workflow_runs[0].head_sha')
+          
+          # 获取当前HEAD SHA
+          CURRENT_HEAD_SHA=${{ github.sha }}
+
+          # 比较两次SHA，如果相同，则没有新的提交
+          if [ "$CURRENT_HEAD_SHA" == "$LAST_SUCCESSFUL_RUN_SHA" ]; then
             echo "No new commits since last successful build."
             exit 1
           else
             echo "New commits found."
-            echo "last_commit=$LAST_SUCCESSFUL_BUILD_SHA" >> $GITHUB_ENV
           fi
 
       - name: Generate Tag Name
@@ -47,37 +51,19 @@ jobs:
           VERSION_CODE="$(date +'%y%m%d%H')"
           echo "version_code=$VERSION_CODE" >> $GITHUB_ENV
 
-      - name: Update version
-        id: update_version
-        run: |
-          sed -i "s/\"version_code\": [0-9]*/\"version_code\": ${{ env.version_code }}/" version.json
-          sed -i "s/\"version_name\": \"v[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*\"/\"version_name\": \"${{ env.tag_name }}\"/" version.json
+#      - name: Update version
+#        id: update_version
+#        run: |
+#          sed -i "s/\"version_code\": [0-9]*/\"version_code\": ${{ env.version_code }}/" version.json
+#          sed -i "s/\"version_name\": \"v[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*\"/\"version_name\": \"${{ env.tag_name }}\"/" version.json
 
-      - name: Commit and push version.json changes
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add version.json
-          git commit -m "Update version.json"
-          git push
-
-      - name: Recheckout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # 获取所有历史记录，以便比较
-
-      - name: Recheck for new commits
-        id: recheck_commits
-        run: |
-          LAST_SUCCESSFUL_BUILD_SHA=$(curl -s "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs?branch=${{ github.ref }}&event=schedule" | jq -r '.workflow_runs[0].head_sha')
-          CURRENT_HEAD_SHA=$(git rev-parse HEAD)
-          if [ "$CURRENT_HEAD_SHA" == "$LAST_SUCCESSFUL_BUILD_SHA" ]; then
-            echo "No new commits since last successful build."
-            exit 1
-          else
-            echo "New commits found."
-            echo "last_commit=$LAST_SUCCESSFUL_BUILD_SHA" >> $GITHUB_ENV
-          fi
+#      - name: Commit and push version.json changes
+#        run: |
+#          git config --local user.email "action@github.com"
+#          git config --local user.name "GitHub Action"
+#          git add version.json
+#          git commit -m "Update version.json"
+#          git push
 
       - name: Create Tag
         if: steps.recheck_commits_after_update.outcome == 'success'
