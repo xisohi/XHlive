@@ -61,6 +61,19 @@ jobs:
           git commit -m "Update version.json"
           git push
 
+      - name: Recheck for new commits  # 再次检查是否有新提交
+        id: Recheck_commits
+        run: |
+          LAST_SUCCESSFUL_BUILD_SHA=$(curl -s "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs?branch=${{ github.ref }}&event=schedule" | jq -r '.workflow_runs[0].head_sha')
+          CURRENT_HEAD_SHA=$(git rev-parse HEAD)
+          if [ "$CURRENT_HEAD_SHA" == "$LAST_SUCCESSFUL_BUILD_SHA" ]; then
+            echo "No new commits since last successful build."
+            exit 1
+          else
+            echo "New commits found."
+            echo "last_commit=$LAST_SUCCESSFUL_BUILD_SHA" >> $GITHUB_ENV
+          fi
+
       - name: Create Tag   # 新建、上传标签
         run: |
           git tag ${{ env.tag_name }}
