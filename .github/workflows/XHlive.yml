@@ -13,10 +13,7 @@ on:
         description: '构建后不提交发布新版'
         required: false
         type: boolean
-      testOption:
-        description: 'arm64支持，不支持ijk解码'
-        required: false
-        type: boolean
+
 permissions:
   contents: write
 
@@ -76,25 +73,11 @@ jobs:
           prerelease: false
           body_path: history.md
 
-      - name: Check version.json path
-        run: ls -l version.json
-
-      - name: Print version.json content
-        run: cat version.json
-
-      - name: Print environment variables
-        run: |
-          echo "Version Code: $version_code"
-          echo "Tag Name: $tag_name"
-
       - name: Update version
         id: update_version
         run: |
           sed -i "s/\"version_code\": [0-9]*/\"version_code\": $version_code/" version.json
           sed -i "s/\"version_name\": \"v[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*\"/\"version_name\": \"$tag_name\"/" version.json
-
-      - name: Verify version.json update
-        run: cat version.json
 
       - name: Commit and push version.json changes
         run: |
