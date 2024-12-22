@@ -28,6 +28,12 @@ jobs:
             repoName: XHlive
             branchName: main
     steps:
+      - name: Check Git Log
+        run: |
+          git log -1 --format='%H' # 输出最新的提交SHA值
+          git log -1 --format='%h' # 输出最新的提交短SHA值
+          git log -10 --oneline # 输出最近10次提交的简略信息
+          
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -59,7 +65,6 @@ jobs:
             echo "New commit detected. Proceeding with further steps..."
             echo "run_steps=true" >> $GITHUB_ENV
           fi
-
 
       - name: Generate Tag Name
         if: ${{ env.run_steps == 'true' }}
