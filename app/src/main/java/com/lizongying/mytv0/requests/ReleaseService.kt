@@ -5,7 +5,7 @@ import retrofit2.Call
 import retrofit2.http.GET
 
 interface ReleaseService {
-    @GET("main/version.json")
+    @GET("XHlive.json")
     fun getRelease(
     ): Call<ReleaseResponse>
 }

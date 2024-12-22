@@ -47,39 +47,40 @@ jobs:
           VERSION_CODE="$(date +'%y%m%d%H')"
           echo "version_code=$VERSION_CODE" >> $GITHUB_ENV
 
-      - name: Update version
-        id: update_version
-        run: |
-          sed -i "s/\"version_code\": [0-9]*/\"version_code\": ${{ env.version_code }}/" version.json
-          sed -i "s/\"version_name\": \"v[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*\"/\"version_name\": \"${{ env.tag_name }}\"/" version.json
+#      - name: Update version
+#        id: update_version
+#        id: update_version
+#        run: |
+#          sed -i "s/\"version_code\": [0-9]*/\"version_code\": ${{ env.version_code }}/" version.json
+#          sed -i "s/\"version_name\": \"v[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*\"/\"version_name\": \"${{ env.tag_name }}\"/" version.json
 
-      - name: Commit and push version.json changes
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add version.json
-          git commit -m "Update version.json"
-          git push
+#      - name: Commit and push version.json changes
+#        run: |
+#          git config --local user.email "action@github.com"
+#          git config --local user.name "GitHub Action"
+#          git add version.json
+#          git commit -m "Update version.json"
+#          git push
 
-      - name: Get the new commit SHA after version update
-        id: get_new_commit_sha
-        run: |
-          NEW_COMMIT_SHA=$(git rev-parse HEAD)
-          echo "new_commit_sha=$NEW_COMMIT_SHA" >> $GITHUB_ENV
+#      - name: Get the new commit SHA after version update
+#        id: get_new_commit_sha
+#        run: |
+#          NEW_COMMIT_SHA=$(git rev-parse HEAD)
+#          echo "new_commit_sha=$NEW_COMMIT_SHA" >> $GITHUB_ENV
 
-      - name: Recheck for new commits after version update
-        if: steps.get_new_commit_sha.outcome == 'success'
-        id: recheck_commits_after_update
-        run: |
-          LAST_SUCCESSFUL_BUILD_SHA=$(curl -s "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs?branch=${{ github.ref }}&event=schedule" | jq -r '.workflow_runs[0].head_sha')
-          NEW_COMMIT_SHA=${{ env.new_commit_sha }}
-          if [ "$LAST_SUCCESSFUL_BUILD_SHA" == "$NEW_COMMIT_SHA" ]; then
-            echo "No new commits since last successful build."
-            exit 1
-          else
-            echo "New commits found."
-            echo "last_commit=$LAST_SUCCESSFUL_BUILD_SHA" >> $GITHUB_ENV
-          fi
+#      - name: Recheck for new commits after version update
+#        if: steps.get_new_commit_sha.outcome == 'success'
+#        id: recheck_commits_after_update
+#        run: |
+#          LAST_SUCCESSFUL_BUILD_SHA=$(curl -s "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs?branch=${{ github.ref }}&event=schedule" | jq -r '.workflow_runs[0].head_sha')
+#          NEW_COMMIT_SHA=${{ env.new_commit_sha }}
+#          if [ "$LAST_SUCCESSFUL_BUILD_SHA" == "$NEW_COMMIT_SHA" ]; then
+#            echo "No new commits since last successful build."
+#            exit 1
+#          else
+#            echo "New commits found."
+#            echo "last_commit=$LAST_SUCCESSFUL_BUILD_SHA" >> $GITHUB_ENV
+#          fi
 
       - name: Create Tag
         if: steps.recheck_commits_after_update.outcome == 'success'
