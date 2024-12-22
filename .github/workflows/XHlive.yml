@@ -28,17 +28,15 @@ jobs:
             repoName: XHlive
             branchName: main
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 获取所有历史记录，以便比较
       - name: Check Git Log
         run: |
           git log -1 --format='%H' # 输出最新的提交SHA值
           git log -1 --format='%h' # 输出最新的提交短SHA值
           git log -10 --oneline # 输出最近10次提交的简略信息
-          
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # 获取所有历史记录，以便比较
-
       - name: Check New Commit
         id: check_commit
         run: |
