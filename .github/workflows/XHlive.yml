@@ -29,18 +29,14 @@ jobs:
       - name: Check for new commits
         id: check_commits
         run: |
-          # 获取最后一次成功工作流运行的HEAD SHA
-          LAST_SUCCESSFUL_RUN_SHA=$(curl -s "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs?branch=${{ github.ref }}&event=schedule" | jq -r '.workflow_runs[0].head_sha')
-          
-          # 获取当前HEAD SHA
-          CURRENT_HEAD_SHA=${{ github.sha }}
-
-          # 比较两次SHA，如果相同，则没有新的提交
-          if [ "$CURRENT_HEAD_SHA" == "$LAST_SUCCESSFUL_RUN_SHA" ]; then
+          LAST_SUCCESSFUL_BUILD_SHA=$(curl -s "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs?branch=${{ github.ref }}&event=schedule" | jq -r '.workflow_runs[0].head_sha')
+          CURRENT_HEAD_SHA=$(git rev-parse HEAD)
+          if [ "$CURRENT_HEAD_SHA" == "$LAST_SUCCESSFUL_BUILD_SHA" ]; then
             echo "No new commits since last successful build."
             exit 1
           else
             echo "New commits found."
+            echo "last_commit=$LAST_SUCCESSFUL_BUILD_SHA" >> $GITHUB_ENV
           fi
 
       - name: Generate Tag Name
@@ -71,20 +67,16 @@ jobs:
           fetch-depth: 0 # 获取所有历史记录，以便比较
 
       - name: Recheck for new commits
-        id: Recheck_commits
+        id: recheck_commits
         run: |
-          # 获取最后一次成功工作流运行的HEAD SHA
-          LAST_SUCCESSFUL_RUN_SHA=$(curl -s "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs?branch=${{ github.ref }}&event=schedule" | jq -r '.workflow_runs[0].head_sha')
-          
-          # 获取当前HEAD SHA
-          CURRENT_HEAD_SHA=${{ github.sha }}
-
-          # 比较两次SHA，如果相同，则没有新的提交
-          if [ "$CURRENT_HEAD_SHA" == "$LAST_SUCCESSFUL_RUN_SHA" ]; then
+          LAST_SUCCESSFUL_BUILD_SHA=$(curl -s "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs?branch=${{ github.ref }}&event=schedule" | jq -r '.workflow_runs[0].head_sha')
+          CURRENT_HEAD_SHA=$(git rev-parse HEAD)
+          if [ "$CURRENT_HEAD_SHA" == "$LAST_SUCCESSFUL_BUILD_SHA" ]; then
             echo "No new commits since last successful build."
             exit 1
           else
             echo "New commits found."
+            echo "last_commit=$LAST_SUCCESSFUL_BUILD_SHA" >> $GITHUB_ENV
           fi
 
       - name: Create Tag
