@@ -71,7 +71,7 @@ jobs:
           fetch-depth: 0 # 获取所有历史记录，以便比较
 
       - name: Recheck for new commits
-        id: check_commits
+        id: Recheck_commits
         run: |
           # 获取最后一次成功工作流运行的HEAD SHA
           LAST_SUCCESSFUL_RUN_SHA=$(curl -s "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs?branch=${{ github.ref }}&event=schedule" | jq -r '.workflow_runs[0].head_sha')
