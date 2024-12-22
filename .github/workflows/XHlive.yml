@@ -26,18 +26,21 @@ jobs:
         with:
           fetch-depth: 0 # 获取所有历史记录，以便比较
 
-      - name: Check New Commit
+      - name: Check for new commits
+        id: check_commits
         run: |
-          upStream="https://github.com/xisohi/XHlive"
-          echo "upStream=$upStream" >> $GITHUB_ENV
-          commit=$(curl -sL "https://api.github.com/repos/xisohi/XHlive/commits/main" | jq -r '.sha')
-          if [ $? -ne 0 ]; then
-            echo "Failed to get commit from API"
+          # 获取最后一次成功工作流运行的HEAD SHA
+          LAST_SUCCESSFUL_RUN_SHA=$(curl -s "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs?branch=${{ github.ref }}&event=schedule" | jq -r '.workflow_runs[0].head_sha')
+          
+          # 获取当前HEAD SHA
+          CURRENT_HEAD_SHA=${{ github.sha }}
+
+          # 比较两次SHA，如果相同，则没有新的提交
+          if [ "$CURRENT_HEAD_SHA" == "$LAST_SUCCESSFUL_RUN_SHA" ]; then
+            echo "No new commits since last successful build."
             exit 1
-          fi
-          if [ -z "$commit" ] || ! grep -q "$commit" README.md; then
-            echo "commit=$commit" >> $GITHUB_ENV
-            echo "commitS=${commit:0:7}" >> $GITHUB_ENV
+          else
+            echo "New commits found."
           fi
 
       - name: Generate Tag Name
@@ -67,18 +70,21 @@ jobs:
         with:
           fetch-depth: 0 # 获取所有历史记录，以便比较
 
-      - name: Recheck New Commit
+      - name: Recheck for new commits
+        id: check_commits
         run: |
-          upStream="https://github.com/xisohi/XHlive"
-          echo "upStream=$upStream" >> $GITHUB_ENV
-          commit=$(curl -sL "https://api.github.com/repos/xisohi/XHlive/commits/main" | jq -r '.sha')
-          if [ $? -ne 0 ]; then
-            echo "Failed to get commit from API"
+          # 获取最后一次成功工作流运行的HEAD SHA
+          LAST_SUCCESSFUL_RUN_SHA=$(curl -s "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs?branch=${{ github.ref }}&event=schedule" | jq -r '.workflow_runs[0].head_sha')
+          
+          # 获取当前HEAD SHA
+          CURRENT_HEAD_SHA=${{ github.sha }}
+
+          # 比较两次SHA，如果相同，则没有新的提交
+          if [ "$CURRENT_HEAD_SHA" == "$LAST_SUCCESSFUL_RUN_SHA" ]; then
+            echo "No new commits since last successful build."
             exit 1
-          fi
-          if [ -z "$commit" ] || ! grep -q "$commit" README.md; then
-            echo "commit=$commit" >> $GITHUB_ENV
-            echo "commitS=${commit:0:7}" >> $GITHUB_ENV
+          else
+            echo "New commits found."
           fi
 
       - name: Create Tag
