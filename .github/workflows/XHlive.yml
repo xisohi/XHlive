@@ -37,7 +37,9 @@ jobs:
         id: check_commit
         run: |
           last_commit=$(git log -1 --format='%H')
+          echo "Last commit on last run: $last_commit"
           commit=$(curl -sL "https://api.github.com/repos/${{ matrix.userName }}/${{ matrix.repoName }}/commits/${{ matrix.branchName }}" | jq -r '.sha')
+          echo "Latest commit from API: $commit"
           if [ "$commit" != "$last_commit" ]; then
             echo "New commit detected. Proceeding with further steps..."
             echo "run_steps=true" >> $GITHUB_ENV
