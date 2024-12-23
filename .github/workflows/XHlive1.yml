@@ -46,7 +46,7 @@ jobs:
 
           # 获取所有发布中的SHA值
           releaseList=$(curl -s "https://api.github.com/repos/${{ matrix.userName }}/${{ matrix.repoName }}/releases")
-          if echo "$releaseList" | grep -q "\"sha\": \"$commitSHA\""; then
+          if echo "$releaseList" | jq -r '.[] | .tag_name' | grep -q "$commitSHA"; then
             echo "Latest commit SHA already exists in releases. Exiting workflow."
             exit 0
           else
