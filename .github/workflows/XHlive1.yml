@@ -37,7 +37,7 @@ jobs:
         id: check_commit
         run: |
           # 获取最新提交的SHA值
-          commitSHA=$(curl -sL "https://api.github.com/repos/${{ matrix.userName }}/${{ matrix.repoName }}/commits/${{ matrix.branchName }}" | jq -r '.sha')
+          SHA=$(curl -sL "https://api.github.com/repos/${{ matrix.userName }}/${{ matrix.repoName }}/commits/${{ matrix.branchName }}" | jq -r '.sha')
           if [ $? -ne 0 ]; then
             echo "Failed to get commit from API"
             exit 1
@@ -45,7 +45,7 @@ jobs:
 
           # 获取所有发布中的target_commitish值
           releaseList=$(curl -s "https://api.github.com/repos/${{ matrix.userName }}/${{ matrix.repoName }}/releases")
-          if echo "$releaseList" | jq -r '.[] | .target_commitish' | grep -q "$commitSHA"; then
+          if echo "$releaseList" | jq -r '.[] | .target_commitish' | grep -q "$SHA"; then
             echo "Latest commit SHA already exists in releases. Exiting workflow."
             exit 0
           else
