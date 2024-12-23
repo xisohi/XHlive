@@ -42,7 +42,6 @@ jobs:
             echo "Failed to get commit from API"
             exit 1
           fi
-          echo "commitSHA=$commitSHA" >> $GITHUB_ENV
 
           # 获取所有发布中的target_commitish值
           releaseList=$(curl -s "https://api.github.com/repos/${{ matrix.userName }}/${{ matrix.repoName }}/releases")
@@ -61,6 +60,31 @@ jobs:
           echo "tag_name=$TAG_NAME" >> $GITHUB_ENV
           VERSION_CODE="$(date +'%y%m%d%H')"
           echo "version_code=$VERSION_CODE" >> $GITHUB_ENV
+
+      - name: Update version
+        id: update_version
+        run: |
+          sed -i "s/\"version_code\": [0-9]*/\"version_code\": ${{ env.version_code }}/" version.json
+          sed -i "s/\"version_name\": \"v[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*\"/\"version_name\": \"${{ env.tag_name }}\"/" version.json
+
+      - name: Commit and push version.json changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add version.json
+          git commit -m "Update version.json"
+          git push
+
+      - name: Recheck New Commit
+        id: recheck_commit
+        run: |
+          # 获取最新提交的SHA值
+          commitSHA=$(curl -sL "https://api.github.com/repos/${{ matrix.userName }}/${{ matrix.repoName }}/commits/${{ matrix.branchName }}" | jq -r '.sha')
+          if [ $? -ne 0 ]; then
+            echo "Failed to get commit from API"
+            exit 1
+          fi
+          echo "commitSHA=$commitSHA" >> $GITHUB_ENV
 
       - name: Create Tag
         if: ${{ env.run_steps == 'true' }}
