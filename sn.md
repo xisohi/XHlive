@@ -8,9 +8,9 @@
 
 修改version.json版本号：年月日时
 
-git tag v24.12.14.08
+git tag v24.12.23.15
 
-git push origin v24.12.14.08
+git push origin v24.12.23.15
 
 ## Credits
 This repo relies on the following third-party projects:
