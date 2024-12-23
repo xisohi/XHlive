@@ -77,12 +77,12 @@ jobs:
           git commit -m "Update version.json"
           git push
           git rev-parse HEAD > commitSHA.txt
-          echo "newSHA=$(cat commitSHA.txt)" >> $GITHUB_ENV
+          echo "NEWSHA=$(cat commitSHA.txt)" >> $GITHUB_ENV
 
       - name: Create Tag
         if: ${{ env.run_steps == 'true' }}
         run: |
-          git tag ${{ env.tag_name }}
+          git tag ${{ env.tag_name }} ${{ env.NEWSHA }}
           git push origin ${{ env.tag_name }}
 
       - name: Set up JDK 21
