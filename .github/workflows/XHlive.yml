@@ -52,8 +52,9 @@ jobs:
       - name: Check if commit is in Releases
         if: ${{ env.run_steps == 'true' }}
         run: |
-          release_commit=$(curl -sL "https://api.github.com/repos/${{ matrix.userName }}/${{ matrix.repoName }}/releases" | jq -r '.[] | .target_commitish' | grep '${{ steps.check_commit.outputs.latest_commit }}')
-          if [ -n "$release_commit" ]; then
+          commit_hash=${{ steps.check_commit.outputs.latest_commit }}
+          release_list=$(curl -s "https://api.github.com/repos/${{ matrix.userName }}/${{ matrix.repoName }}/releases")
+          if echo "$release_list" | grep -q "\"sha\": \"$commit_hash\""; then
             echo "Commit is already in Releases. Exiting workflow."
             exit 0
           else
