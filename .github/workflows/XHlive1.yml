@@ -76,31 +76,14 @@ jobs:
           git add version.json
           git commit -m "Update version.json"
           git push
-
-      - name: Get latest commit SHA after push
-        if: ${{ env.run_steps == 'true' }}
-        id: get_latest_sha_after_push
-        run: |
-          NEW_COMMIT_SHA=$(git rev-parse HEAD)
-          echo "NEW_COMMIT_SHA=$NEW_COMMIT_SHA" >> $GITHUB_ENV
+          git rev-parse HEAD > commitSHA.txt
+          echo "newSHA=$(cat commitSHA.txt)" >> $GITHUB_ENV
 
       - name: Create Tag
         if: ${{ env.run_steps == 'true' }}
         run: |
-          git tag ${{ env.tag_name }} ${{ env.NEW_COMMIT_SHA }}
+          git tag ${{ env.tag_name }}
           git push origin ${{ env.tag_name }}
-
-      - name: Create Release
-        if: ${{ env.run_steps == 'true' }}
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ env.tag_name }}
-          release_name: Release ${{ env.tag_name }}
-          target_commitish: ${{ env.NEW_COMMIT_SHA }}
-          draft: false
-          prerelease: false
 
       - name: Set up JDK 21
         if: ${{ env.run_steps == 'true' }}
@@ -117,6 +100,19 @@ jobs:
           chmod +x history.sh
           output=$(./history.sh)
           echo "$output" > history.md
+
+      - name: Create Release
+        id: create_release
+        if: ${{ env.run_steps == 'true' }}
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.tag_name }}
+          release_name: Release ${{ env.tag_name }}
+          draft: false
+          prerelease: false
+          body_path: history.md
 
       - name: Run build with Gradle wrapper
         if: ${{ env.run_steps == 'true' }}
