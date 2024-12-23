@@ -60,14 +60,14 @@ class UpdateManager(
     }
 
     private fun startDownload(release: ReleaseResponse) {
-        val apkName = "XHlive"
-        val apkFileName = "$apkName-${release.version_name}${APK_SUFFIX}.apk"
+       val apkName = "XHlive"
         val v = release.version_name?.removePrefix("v")
+        val apkFileName = "$apkName.${v}${APK_SUFFIX}.apk"
         val url =
             "${HttpClient.DOWNLOAD_HOST}${release.version_name}/$apkName.${v}.apk"
         Log.i(
             TAG,
-            "url ${url}"
+            "url $url"
         )
         var downloadDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
         if (downloadDir == null) {
