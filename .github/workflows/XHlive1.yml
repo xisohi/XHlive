@@ -67,13 +67,14 @@ jobs:
           sed -i "s/\"version_code\": [0-9]*/\"version_code\": ${{ env.version_code }}/" version.json
           sed -i "s/\"version_name\": \"v[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*\"/\"version_name\": \"${{ env.tag_name }}\"/" version.json
 
-      - name: Commit and push version.json changes
+      - name: Commit and push version.json changes to update branch
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add version.json
           git commit -m "Update version.json"
-          git push
+          # Push to the 'update' branch instead of the default branch
+          git push -u origin HEAD:update
 
       - name: Recheck New Commit
         id: recheck_commit
