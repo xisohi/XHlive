@@ -34,9 +34,9 @@ jobs:
           fetch-depth: 0 # 获取所有历史记录，以便比较
 
       - name: Check New Commit
+        id: check_commit
         run: |
-          upStream="https://github.com/${{ matrix.userName }}/${{ matrix.repoName }}"
-          echo "upStream=$upStream" >> $GITHUB_ENV
+          # 获取最新提交的SHA值
           commit=$(curl -sL "https://api.github.com/repos/${{ matrix.userName }}/${{ matrix.repoName }}/commits/${{ matrix.branchName }}" | jq -r '.sha')
           if [ $? -ne 0 ]; then
             echo "Failed to get commit from API"
@@ -45,9 +45,13 @@ jobs:
           # 从update分支获取sn.md文件的内容
           git fetch origin update:temp
           tempSnMdContent=$(git show origin/update:sn.md)
-          if [ -z "$commit" ] || ! echo "$tempSnMdContent" | grep -q "$commit"; then
-            echo "commit=$commit" >> $GITHUB_ENV
-            echo "commitS=${commit:0:7}" >> $GITHUB_ENV
+          # 检查最新提交的SHA值是否在sn.md文件中
+          if [ -z "$commit" ] || echo "$tempSnMdContent" | grep -q "$commit"; then
+            echo "Latest commit SHA already in sn.md. Exiting workflow."
+            exit 0
+          else
+            echo "New commit detected. Proceeding with further steps..."
+            echo "run_steps=true" >> $GITHUB_ENV
           fi
           # 清理临时分支
           git branch -D temp
