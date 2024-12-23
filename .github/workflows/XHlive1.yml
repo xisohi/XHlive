@@ -75,17 +75,8 @@ jobs:
           git add version.json
           git commit -m "Update version.json"
           git push
-
-      - name: Recheck New Commit
-        id: recheck_commit
-        run: |
-          # 获取最新提交的SHA值
-          newcommitSHA=$(curl -sL "https://api.github.com/repos/${{ matrix.userName }}/${{ matrix.repoName }}/commits/${{ matrix.branchName }}" | jq -r '.sha')
-          if [ $? -ne 0 ]; then
-            echo "Failed to get commit from API"
-            exit 1
-          fi
-          echo "newcommitSHA=$newcommitSHA" >> $GITHUB_ENV
+          git rev-parse HEAD > commitSHA.txt
+          echo "newcommitSHA=$(cat commitSHA.txt)" >> $GITHUB_ENV
 
       - name: Create Tag
         if: ${{ env.run_steps == 'true' }}
