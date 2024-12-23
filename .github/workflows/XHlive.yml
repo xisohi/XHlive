@@ -38,15 +38,26 @@ jobs:
         run: |
           last_commit=$(git log -1 --format='%H')
           echo "Last commit on last run: $last_commit"
-          commit=$(curl -sL "https://api.github.com/repos/${{ matrix.userName }}/${{ matrix.repoName }}/commits/${{ matrix.branchName }}" | jq -r '.sha')
-          echo "Latest commit from API: $commit"
-          if [ "$commit" != "$last_commit" ]; then
+          latest_commit=$(curl -sL "https://api.github.com/repos/${{ matrix.userName }}/${{ matrix.repoName }}/commits/${{ matrix.branchName }}" | jq -r '.sha')
+          echo "Latest commit from API: $latest_commit"
+          if [ "$latest_commit" != "$last_commit" ]; then
             echo "New commit detected. Proceeding with further steps..."
             echo "run_steps=true" >> $GITHUB_ENV
           else
             echo "No new commit."
             echo "run_steps=false" >> $GITHUB_ENV
             exit 0
+          fi
+
+      - name: Check if commit is in Releases
+        if: ${{ env.run_steps == 'true' }}
+        run: |
+          release_commit=$(curl -sL "https://api.github.com/repos/${{ matrix.userName }}/${{ matrix.repoName }}/releases" | jq -r '.[] | .target_commitish' | grep '${{ steps.check_commit.outputs.latest_commit }}')
+          if [ -n "$release_commit" ]; then
+            echo "Commit is already in Releases. Exiting workflow."
+            exit 0
+          else
+            echo "Commit is not in Releases. Continuing workflow."
           fi
 
       - name: Generate Tag Name
