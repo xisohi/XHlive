@@ -44,10 +44,10 @@ jobs:
           fi
           echo "commitSHA=$commitSHA" >> $GITHUB_ENV
 
-          # 获取所有发布中的target_commitish值
-          releaseList=$(curl -s "https://api.github.com/repos/${{ matrix.userName }}/${{ matrix.repoName }}/releases")
-          if echo "$releaseList" | jq -r '.[] | .target_commitish' | grep -q "$commitSHA"; then
-            echo "Latest commit SHA already exists in releases. Exiting workflow."
+          # 获取所有发布标签中的SHA值
+          releaseList=$(curl -s "https://api.github.com/repos/${{ matrix.userName }}/${{ matrix.repoName }}/tags")
+          if echo "$releaseList" | jq -r '.[] | .commit.sha' | grep -q "$commitSHA"; then
+            echo "Latest commit SHA already exists in tags. Exiting workflow."
             exit 0
           else
             echo "New commit detected. Proceeding with further steps..."
@@ -62,10 +62,27 @@ jobs:
           VERSION_CODE="$(date +'%y%m%d%H')"
           echo "version_code=$VERSION_CODE" >> $GITHUB_ENV
 
+      - name: Update version
+        if: ${{ env.run_steps == 'true' }}
+        run: |
+          sed -i "s/\"version_code\": [0-9]*/\"version_code\": ${{ env.version_code }}/" version.json
+          sed -i "s/\"version_name\": \"v[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*\"/\"version_name\": \"${{ env.tag_name }}\"/" version.json
+
+      - name: Commit and push version.json changes
+        if: ${{ env.run_steps == 'true' }}
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add version.json
+          git commit -m "Update version.json"
+          git push
+          git rev-parse HEAD > commitSHA.txt
+          echo "NEWSHA=$(cat commitSHA.txt)" >> $GITHUB_ENV
+
       - name: Create Tag
         if: ${{ env.run_steps == 'true' }}
         run: |
-          git tag ${{ env.tag_name }}
+          git tag ${{ env.tag_name }} ${{ env.NEWSHA }}
           git push origin ${{ env.tag_name }}
 
       - name: Set up JDK 21
