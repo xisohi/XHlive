@@ -1,0 +1,149 @@
+name: XHlivekitkat
+
+on:
+  schedule:
+    - cron: '0 4 * * *' # 每天凌晨6点（UTC时间）执行，相当于北京时间上午14点
+  workflow_dispatch:
+    inputs:
+      rebuild:
+        description: '忽略构建记录以重新构建'
+        required: false
+        type: boolean
+      donotpublish:
+        description: '构建后不提交发布新版'
+        required: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - userName: xisohi
+            repoName: XHlive
+            branchName: main
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 获取所有历史记录，以便比较
+
+      - name: Check New Commit
+        id: check_commit
+        run: |
+          # 获取最新提交的SHA值
+          commitSHA=$(curl -sL "https://api.github.com/repos/${{ matrix.userName }}/${{ matrix.repoName }}/commits/${{ matrix.branchName }}" | jq -r '.sha')
+          if [ $? -ne 0 ]; then
+            echo "Failed to get commit from API"
+            exit 1
+          fi
+          echo "commitSHA=$commitSHA" >> $GITHUB_ENV
+
+          # 获取所有发布标签中的SHA值
+          releaseList=$(curl -s "https://api.github.com/repos/${{ matrix.userName }}/${{ matrix.repoName }}/tags")
+          if echo "$releaseList" | jq -r '.[] | .commit.sha' | grep -q "$commitSHA"; then
+            echo "Latest commit SHA already exists in tags. Exiting workflow."
+            exit 0
+          else
+            echo "New commit detected. Proceeding with further steps..."
+            echo "run_steps=true" >> $GITHUB_ENV
+          fi
+
+      - name: Generate Tag Name
+        if: ${{ env.run_steps == 'true' }}
+        run: |
+          TAG_NAME="v$(date +'%y.%m.%d.%H')"
+          echo "tag_name=$TAG_NAME" >> $GITHUB_ENV
+          VERSION_CODE="$(date +'%y%m%d%H')"
+          echo "version_code=$VERSION_CODE" >> $GITHUB_ENV
+
+      - name: Update version
+        if: ${{ env.run_steps == 'true' }}
+        run: |
+          sed -i "s/\"version_code\": [0-9]*/\"version_code\": ${{ env.version_code }}/" version.json
+          sed -i "s/\"version_name\": \"v[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*\-kitkat"/\"version_name\": \"${{ env.tag_name }}\-kitkat"/" version.json
+
+      - name: Commit and push version.json changes
+        if: ${{ env.run_steps == 'true' }}
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add version.json
+          git commit -m "Update version.json"
+          git push
+          git rev-parse HEAD > commitSHA.txt
+          echo "NEWSHA=$(cat commitSHA.txt)" >> $GITHUB_ENV
+
+      - name: Create Tag
+        if: ${{ env.run_steps == 'true' }}
+        run: |
+          git tag ${{ env.tag_name }} ${{ env.NEWSHA }}
+          git push origin ${{ env.tag_name }}
+
+      - name: Set up JDK 21
+        if: ${{ env.run_steps == 'true' }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Get History
+        if: ${{ env.run_steps == 'true' }}
+        id: get_history
+        run: |
+          chmod +x history.sh
+          output=$(./history.sh)
+          echo "$output" > history.md
+
+      - name: Create Release
+        id: create_release
+        if: ${{ env.run_steps == 'true' }}
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.tag_name }}
+          release_name: Release ${{ env.tag_name }}
+          draft: false
+          prerelease: false
+          body_path: history.md
+
+      - name: Run build with Gradle wrapper
+        if: ${{ env.run_steps == 'true' }}
+        run: ./gradlew clean && ./gradlew assembleRelease
+
+      - name: Sign app APK
+        if: ${{ env.run_steps == 'true' }}
+        uses: r0adkll/sign-android-release@v1
+        with:
+          releaseDirectory: app/build/outputs/apk/release
+          alias: ${{ secrets.ALIAS }}
+          signingKeyBase64: ${{ secrets.KEYSTORE }}
+          keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword: ${{ secrets.ALIAS_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: "34.0.0"
+
+      - name: Set Asset Name
+        if: ${{ env.run_steps == 'true' }}
+        id: set_asset_name
+        run: |
+          VERSION_WITHOUT_V=$(echo '${{ env.tag_name }}' | sed 's/^v//')
+          echo "asset_name=XHlive.${VERSION_WITHOUT_V}.apk" >> $GITHUB_ENV
+
+      - name: Upload Release Asset
+        if: ${{ env.run_steps == 'true' }}
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ env.SIGNED_RELEASE_FILE }}
+          asset_name: ${{ env.asset_name }}
+          asset_content_type: application/vnd.android.package-archive
