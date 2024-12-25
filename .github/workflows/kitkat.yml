@@ -26,12 +26,13 @@ jobs:
         include:
           - userName: xisohi
             repoName: XHlive
-            branchName: kitkat
+            branchName: kitkat # 这里指定为 kitkat 分支，不使用动态变量
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
         with:
           fetch-depth: 0 # 获取所有历史记录，以便比较
+          ref: ${{ matrix.branchName }} # 指定检出分支
 
       - name: Check New Commit
         id: check_commit
@@ -57,7 +58,7 @@ jobs:
       - name: Generate Tag Name
         if: ${{ env.run_steps == 'true' }}
         run: |
-          TAG_NAME="v$(date +'%y.%m.%d.%H')"
+          TAG_NAME="v$(date +'%y.%m.%d.%H')-kitkat"
           echo "tag_name=$TAG_NAME" >> $GITHUB_ENV
           VERSION_CODE="$(date +'%y%m%d%H')"
           echo "version_code=$VERSION_CODE" >> $GITHUB_ENV
@@ -66,7 +67,7 @@ jobs:
         if: ${{ env.run_steps == 'true' }}
         run: |
           sed -i "s/\"version_code\": [0-9]*/\"version_code\": ${{ env.version_code }}/" version.json
-          sed -i "s/\"version_name\": \"v[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*\-kitkat"/\"version_name\": \"${{ env.tag_name }}\-kitkat"/" version.json
+          sed -i "s/\"version_name\": \"v[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*\-kitkat\"/\"version_name\": \"${{ env.tag_name }}\"/" version.json
 
       - name: Commit and push version.json changes
         if: ${{ env.run_steps == 'true' }}
@@ -87,7 +88,7 @@ jobs:
 
       - name: Set up JDK 21
         if: ${{ env.run_steps == 'true' }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v3
         with:
           java-version: '21'
           distribution: 'temurin'
