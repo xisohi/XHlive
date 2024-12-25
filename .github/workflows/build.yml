@@ -1,4 +1,4 @@
-name: build
+name: kitkat build
 
 on:
   push:
