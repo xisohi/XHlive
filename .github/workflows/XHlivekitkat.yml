@@ -2,7 +2,7 @@ name: XHlivekitkat
 
 on:
   schedule:
-    - cron: '0 4 * * *' # 每天凌晨6点（UTC时间）执行，相当于北京时间上午14点
+    - cron: '0 4 * * *' # 每天凌晨6点（UTC时间）执行，相当于北京时间上午12点
   workflow_dispatch:
     inputs:
       rebuild:
