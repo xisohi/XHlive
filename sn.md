@@ -4,7 +4,9 @@
 
 默认源列表：raw\sources.txt
 
-文件转为64卦格式：gua64 -f -e 明文.txt -o 64卦.txt
+64卦编码：gua64 -f -e 明文.txt -o 64卦.txt
+
+64卦解码：gua64 -f -d 64卦.txt -o 明文.txt
 
 修改version.json版本号：年月日时
 
