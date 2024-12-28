@@ -2,7 +2,7 @@ name: kitkat
 
 on:
   schedule:
-    - cron: '0 4 * * *' # 每天凌晨4点（UTC时间）执行，相当于北京时间上午12点
+    - cron: '0 10,22 * * *' # 每天早/晚10时（UTC时间）执行，相当于北京时间每天早/晚6点
   workflow_dispatch:
     inputs:
       rebuild:
