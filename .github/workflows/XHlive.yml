@@ -2,7 +2,7 @@ name: XHlive
 
 on:
   schedule:
-    - cron: '0 6,23 * * *' # 每天早/晚11时（UTC时间）执行，相当于北京时间每天早/晚7点
+    - cron: '0 11,23 * * *' # 每天早/晚11时（UTC时间）执行，相当于北京时间每天早/晚7点
   workflow_dispatch:
     inputs:
       rebuild:
