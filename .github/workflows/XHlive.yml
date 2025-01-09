@@ -2,7 +2,7 @@ name: XHlive
 
 on:
   schedule:
-    - cron: '0 6 * * *' # 每天凌晨6点（UTC时间）执行，相当于北京时间上午14点
+    - cron: '0 11,23 * * *' # 每天早/晚11时（UTC时间）执行，相当于北京时间每天早/晚7点
   workflow_dispatch:
     inputs:
       rebuild:
@@ -65,16 +65,16 @@ jobs:
       - name: Update version
         if: ${{ env.run_steps == 'true' }}
         run: |
-          sed -i "s/\"version_code\": [0-9]*/\"version_code\": ${{ env.version_code }}/" version.json
-          sed -i "s/\"version_name\": \"v[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*\"/\"version_name\": \"${{ env.tag_name }}\"/" version.json
+          sed -i "s/\"version_code\": [0-9]*/\"version_code\": ${{ env.version_code }}/" update.json
+          sed -i "s/\"version_name\": \"v[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*\"/\"version_name\": \"${{ env.tag_name }}\"/" update.json
 
       - name: Commit and push version.json changes
         if: ${{ env.run_steps == 'true' }}
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add version.json
-          git commit -m "Update version.json"
+          git add update.json
+          git commit -m "Update update.json"
           git push
           git rev-parse HEAD > commitSHA.txt
           echo "NEWSHA=$(cat commitSHA.txt)" >> $GITHUB_ENV
