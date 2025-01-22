@@ -5,7 +5,7 @@ import retrofit2.Call
 import retrofit2.http.GET
 
 interface ReleaseService {
-    @GET("kitkat/version.json")
+    @GET("kitkat/update.json")
     fun getRelease(
     ): Call<ReleaseResponse>
 }
