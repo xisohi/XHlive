@@ -1,8 +1,8 @@
-# 星輝直播
+# 我的電視·〇
 
 電視視頻播放軟件，可以自定義視頻源
 
-[XHlive](https://github.com/xisohi/XHlive)
+[my-tv-0](https://github.com/lizongying/my-tv-0)
 
 ## 使用
 
@@ -54,11 +54,11 @@
 
 推薦配合使用 [my-tv-server](https://github.com/lizongying/my-tv-server)
 
-下載安裝 [releases](https://github.com/xisohi/XHlive/releases/)
+下載安裝 [releases](https://github.com/lizongying/my-tv-0/releases/)
 
 注意，“*-kitkat”為安卓4.4兼容版本
 
-更多下載地址 [XHlive](https://lyrics.run/my-tv-0.html)
+更多下載地址 [my-tv-0](https://lyrics.run/my-tv-0.html)
 
 ![image](./screenshots/Screenshot_20240810_151748.png)
 ![image](./screenshots/Screenshot_20240813_232847.png)
@@ -73,7 +73,7 @@
 建議通過ADB進行安裝：
 
 ```shell
-adb install XHlive.apk
+adb install my-tv-0.apk
 ```
 
 小米電視可以使用小米電視助手進行安裝
