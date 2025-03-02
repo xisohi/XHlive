@@ -614,6 +614,11 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        if (channelFragment.isAdded && !channelFragment.isHidden) {
+            channelFragment.hideSelf()
+            return
+        }
+
         if (doubleBackToExitPressedOnce) {
             super.onBackPressed()
             return
@@ -642,6 +647,8 @@ class MainActivity : AppCompatActivity() {
 
         val webView = binding.web
         webView.settings.javaScriptEnabled = true
+        webView.isFocusableInTouchMode = true
+        webView.isFocusable = true
         webView.loadUrl(url)
 
         val popupWindow = PopupWindow(
