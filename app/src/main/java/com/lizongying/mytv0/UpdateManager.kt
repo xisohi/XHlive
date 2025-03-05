@@ -64,7 +64,7 @@ class UpdateManager(
 
     private fun startDownload(release: ReleaseResponse) {
         val apkName = "XHlive"
-        val apkFileName = "${apkName}_${release.version_name}.apk"
+        val apkFileName = "${apkName}_${release.version_code}.apk"
         val downloadManager =
             context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         val request =
