@@ -1,11 +1,9 @@
 package com.lizongying.mytv0.requests
 
-
 import android.net.Uri
 import android.os.Build
 import android.util.Log
 import com.lizongying.mytv0.SP
-import com.lizongying.mytv0.Utils.formatUrl
 import okhttp3.ConnectionSpec
 import okhttp3.OkHttpClient
 import okhttp3.TlsVersion
@@ -18,13 +16,9 @@ import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 
-
 object HttpClient {
     const val TAG = "HttpClient"
-    private const val HOST = "https://xhys.lcjly.cn/update/"
-    const val DOWNLOAD_HOST = "https://ghfast.top/https://github.com/xisohi/TVBoxOSC/releases/download/XHlive"
-
-    private val clientCache = mutableMapOf<String?, OkHttpClient>()
+    private const val HOST = "https://xhys.lcjly.cn/update/"  // 更新配置文件的主机地址
 
     val releaseService: ReleaseService by lazy {
         Retrofit.Builder()
@@ -43,13 +37,9 @@ object HttpClient {
     }
 
     fun getClientWithProxy(): OkHttpClient {
-        clientCache[SP.proxy]?.let {
-            return it
-        }
-
         if (!SP.proxy.isNullOrEmpty()) {
             try {
-                val proxyUri = Uri.parse(formatUrl(SP.proxy!!))
+                val proxyUri = Uri.parse(SP.proxy)
                 val proxyType = when (proxyUri.scheme) {
                     "http", "https" -> Proxy.Type.HTTP
                     "socks", "socks5" -> Proxy.Type.SOCKS
@@ -57,37 +47,22 @@ object HttpClient {
                 }
                 proxyType?.let {
                     builder.proxy(Proxy(it, InetSocketAddress(proxyUri.host, proxyUri.port)))
+                    Log.i(TAG, "Proxy applied: $proxyUri")
                 }
-                Log.i(TAG, "apply proxy $proxyUri")
             } catch (e: Exception) {
-                Log.e(TAG, "getClientWithProxy", e)
+                Log.e(TAG, "Error applying proxy: ${e.message}", e)
             }
         }
 
-        val client = builder.build()
-        clientCache[SP.proxy] = client
-        return client
+        return builder.build()
     }
 
     private fun createBuilder(): OkHttpClient.Builder {
-        val trustManager =
-            object : X509TrustManager {
-                override fun checkClientTrusted(
-                    chain: Array<out java.security.cert.X509Certificate>?,
-                    authType: String?
-                ) {
-                }
-
-                override fun checkServerTrusted(
-                    chain: Array<out java.security.cert.X509Certificate>?,
-                    authType: String?
-                ) {
-                }
-
-                override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> {
-                    return emptyArray()
-                }
-            }
+        val trustManager = object : X509TrustManager {
+            override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
+            override fun checkServerTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
+            override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = emptyArray()
+        }
 
         val sslContext = SSLContext.getInstance("TLS")
         sslContext.init(null, arrayOf(trustManager), java.security.SecureRandom())
@@ -96,7 +71,6 @@ object HttpClient {
             .sslSocketFactory(sslContext.socketFactory, trustManager)
             .hostnameVerifier { _, _ -> true }
             .connectionSpecs(listOf(ConnectionSpec.COMPATIBLE_TLS, ConnectionSpec.CLEARTEXT))
-            .dns(DnsCache())
             .apply { enableTls12OnPreLollipop() }
     }
 
@@ -113,7 +87,7 @@ object HttpClient {
                 val trustManagers = trustManagerFactory.trustManagers
                 val trustManager = trustManagers[0] as X509TrustManager
 
-                sslSocketFactory(Tls12SocketFactory(sslContext.socketFactory), trustManager)
+                sslSocketFactory(sslContext.socketFactory, trustManager)
                 connectionSpecs(
                     listOf(
                         ConnectionSpec.Builder(ConnectionSpec.MODERN_TLS)
@@ -124,7 +98,7 @@ object HttpClient {
                     )
                 )
             } catch (e: Exception) {
-                Log.e(TAG, "enableTls12OnPreLollipop", e)
+                Log.e(TAG, "Error enabling TLS 1.2 on pre-Lollipop: ${e.message}", e)
             }
         }
     }

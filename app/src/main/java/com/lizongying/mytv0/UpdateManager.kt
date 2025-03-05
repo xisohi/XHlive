@@ -13,6 +13,8 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.fragment.app.FragmentActivity
 import com.lizongying.mytv0.data.ReleaseResponse
 import com.lizongying.mytv0.requests.HttpClient
@@ -22,16 +24,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
 
-
 class UpdateManager(
-    private var context: Context,
-    private var versionCode: Long
-) :
-    ConfirmationFragment.ConfirmationListener {
+    private val context: Context,
+    private val versionCode: Long
+) : ConfirmationFragment.ConfirmationListener {
 
-    private var releaseRequest = ReleaseRequest()
+    private val releaseRequest = ReleaseRequest()
     private var release: ReleaseResponse? = null
-
     private var downloadReceiver: DownloadReceiver? = null
 
     fun checkAndUpdate() {
@@ -41,14 +40,12 @@ class UpdateManager(
             var update = false
             try {
                 release = releaseRequest.getRelease()
-                Log.i(TAG, "versionCode $versionCode ${release?.version_code}")
-                if (release?.version_code != null) {
-                    if (release?.version_code!! > versionCode) {
-                        text = "最新版本：${release?.version_name}"
-                        update = true
-                    } else {
-                        text = "已是最新版本，不需要更新"
-                    }
+                Log.i(TAG, "Current version: $versionCode, Latest version: ${release?.version_code}")
+                if (release?.version_code != null && release?.version_code!! > versionCode) {
+                    text = "最新版本：${release?.version_name}"
+                    update = true
+                } else {
+                    text = "已是最新版本，不需要更新"
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error occurred: ${e.message}", e)
@@ -63,48 +60,48 @@ class UpdateManager(
     }
 
     private fun startDownload(release: ReleaseResponse) {
-        val apkName = "XHlive"
-        val apkFileName = "${apkName}.apk"
-        val downloadManager =
-            context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val request =
-            Request(Uri.parse("${HttpClient.DOWNLOAD_HOST}/$apkFileName"))
-        Log.i(
-            TAG,
-            "url ${Uri.parse("${HttpClient.DOWNLOAD_HOST}/$apkFileName")}"
-        )
-        context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)?.mkdirs()
-        Log.i(TAG, "save dir ${Environment.DIRECTORY_DOWNLOADS}")
-        request.setDestinationInExternalFilesDir(
-            context,
-            Environment.DIRECTORY_DOWNLOADS,
-            apkFileName
-        )
-        request.setTitle("${context.getString(R.string.app_name)} ${release.version_name}")
-        request.setNotificationVisibility(Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-        request.setAllowedOverRoaming(false)
-        request.setMimeType("application/vnd.android.package-archive")
+        release.apkurl?.let { apkUrl ->
+            val apkFileName = apkUrl.substringAfterLast("/")  // 从 URL 中提取 APK 文件名
+            val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            val request = Request(Uri.parse(apkUrl))
 
-        // 获取下载任务的引用
-        val downloadReference = downloadManager.enqueue(request)
-
-        downloadReceiver = DownloadReceiver(context, apkFileName, downloadReference)
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.registerReceiver(
-                downloadReceiver,
-                IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
-                Context.RECEIVER_NOT_EXPORTED,
+            context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)?.mkdirs()
+            request.setDestinationInExternalFilesDir(
+                context,
+                Environment.DIRECTORY_DOWNLOADS,
+                apkFileName
             )
-        } else {
-            context.registerReceiver(
-                downloadReceiver,
-                IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
-            )
-        }
+            request.setTitle("${context.getString(R.string.app_name)} ${release.version_name}")
+            request.setNotificationVisibility(Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            request.setAllowedOverRoaming(false)
+            request.setMimeType("application/vnd.android.package-archive")
 
-        getDownloadProgress(context, downloadReference) { progress ->
-            println("Download progress: $progress%")
+            val downloadReference = downloadManager.enqueue(request)
+
+            // 注销旧的接收器
+            downloadReceiver?.let { context.unregisterReceiver(it) }
+
+            downloadReceiver = DownloadReceiver(context, apkFileName, downloadReference, this)
+
+            val intentFilter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.registerReceiver(downloadReceiver, intentFilter, Context.RECEIVER_EXPORTED)
+            } else {
+                ContextCompat.registerReceiver(
+                    context,
+                    downloadReceiver,
+                    intentFilter,
+                    ContextCompat.RECEIVER_NOT_EXPORTED
+                )
+            }
+
+            getDownloadProgress(context, downloadReference) { progress ->
+                Log.i(TAG, "Download progress: $progress%")
+            }
+        } ?: run {
+            Log.e(TAG, "APK URL is missing in the release response.")
+            updateUI("更新失败：APK 文件地址无效", false)
         }
     }
 
@@ -119,33 +116,23 @@ class UpdateManager(
 
         handler.post(object : Runnable {
             override fun run() {
-                Log.i(TAG, "search")
                 val query = DownloadManager.Query().setFilterById(downloadId)
                 val cursor: Cursor = downloadManager.query(query)
                 cursor.use {
                     if (it.moveToFirst()) {
-                        val bytesDownloadedIndex =
-                            it.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
-                        val bytesTotalIndex =
-                            it.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
+                        val bytesDownloadedIndex = it.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
+                        val bytesTotalIndex = it.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
 
-                        // 检查列名是否存在
-                        if (bytesDownloadedIndex != -1 && bytesTotalIndex != -1) {
-                            val bytesDownloaded = it.getInt(bytesDownloadedIndex)
-                            val bytesTotal = it.getInt(bytesTotalIndex)
+                        val bytesDownloaded = it.getLong(bytesDownloadedIndex)
+                        val bytesTotal = it.getLong(bytesTotalIndex)
 
-                            if (bytesTotal != -1) {
-                                val progress = (bytesDownloaded * 100L / bytesTotal).toInt()
-                                progressListener(progress)
-                                if (progress == 100) {
-                                    return
-                                }
-                            }
+                        if (bytesTotal > 0) {
+                            val progress = (bytesDownloaded * 100L / bytesTotal).toInt()
+                            progressListener(progress)
                         }
                     }
                 }
-
-//                handler.postDelayed(this, intervalMillis)
+                handler.postDelayed(this, intervalMillis)
             }
         })
     }
@@ -153,69 +140,51 @@ class UpdateManager(
     private class DownloadReceiver(
         private val context: Context,
         private val apkFileName: String,
-        private val downloadReference: Long
+        private val downloadReference: Long,
+        private val updateManager: UpdateManager
     ) : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val reference = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
-            Log.i(TAG, "reference $reference")
+            Log.i(TAG, "Received download ID: $reference")
 
             if (reference == downloadReference) {
-                val downloadManager =
-                    context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
                 val query = DownloadManager.Query().setFilterById(downloadReference)
                 val cursor = downloadManager.query(query)
-                if (cursor != null && cursor.moveToFirst()) {
-                    val statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
-                    if (statusIndex < 0) {
-                        Log.i(TAG, "Download failure")
-                        return
-                    }
-                    val status = cursor.getInt(statusIndex)
+                cursor.use {
+                    if (it.moveToFirst()) {
+                        val status = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                        Log.i(TAG, "Download status: $status")
 
-                    val progressIndex =
-                        cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
-                    if (progressIndex < 0) {
-                        Log.i(TAG, "Download failure")
-                        return
-                    }
-                    val progress = cursor.getInt(progressIndex)
-
-                    val totalSizeIndex =
-                        cursor.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
-                    val totalSize = cursor.getInt(totalSizeIndex)
-
-                    cursor.close()
-
-                    when (status) {
-                        DownloadManager.STATUS_SUCCESSFUL -> {
-                            installNewVersion()
-                        }
-
-                        DownloadManager.STATUS_FAILED -> {
-                            // Handle download failure
-                            Log.i(TAG, "Download failure")
-                        }
-
-                        else -> {
-                            // Update UI with download progress
-                            val percentage = progress * 100 / totalSize
-                            Log.i(TAG, "Download progress: $percentage%")
+                        if (status == DownloadManager.STATUS_SUCCESSFUL) {
+                            installNewVersion(context, apkFileName)
+                        } else if (status == DownloadManager.STATUS_FAILED) {
+                            Log.e(TAG, "Download failed")
+                            updateManager.updateUI("更新失败：下载失败", false)
                         }
                     }
                 }
             }
         }
 
-        private fun installNewVersion() {
+        private fun installNewVersion(context: Context, apkFileName: String) {
             val apkFile = File(
                 context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
                 apkFileName
             )
-            Log.i(TAG, "apkFile $apkFile")
+            Log.i(TAG, "APK file path: $apkFile")
 
             if (apkFile.exists()) {
-                val apkUri = Uri.parse("file://$apkFile")
-                Log.i(TAG, "apkUri $apkUri")
+                val apkUri: Uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.provider",
+                        apkFile
+                    )
+                } else {
+                    Uri.fromFile(apkFile)
+                }
+
                 val installIntent = Intent(Intent.ACTION_VIEW).apply {
                     setDataAndType(apkUri, "application/vnd.android.package-archive")
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -224,6 +193,7 @@ class UpdateManager(
                 context.startActivity(installIntent)
             } else {
                 Log.e(TAG, "APK file does not exist!")
+                updateManager.updateUI("更新失败：APK 文件不存在", false)
             }
         }
     }
@@ -233,17 +203,18 @@ class UpdateManager(
     }
 
     override fun onConfirm() {
-        Log.i(TAG, "onConfirm $release")
+        Log.i(TAG, "User confirmed update")
         release?.let { startDownload(it) }
     }
 
     override fun onCancel() {
+        Log.i(TAG, "User canceled update")
     }
 
     fun destroy() {
-        if (downloadReceiver != null) {
-            context.unregisterReceiver(downloadReceiver)
-            Log.i(TAG, "destroy downloadReceiver")
+        downloadReceiver?.let {
+            context.unregisterReceiver(it)
+            Log.i(TAG, "Unregistered download receiver")
         }
     }
 }
