@@ -22,7 +22,7 @@ import javax.net.ssl.X509TrustManager
 object HttpClient {
     const val TAG = "HttpClient"
     private const val HOST = "https://xhys.lcjly.cn/update/"
-    const val DOWNLOAD_HOST = "https://ghfast.top/https://github.com/xisohi/TVBoxOSC/releases/download/XHlive/"
+    const val DOWNLOAD_HOST = "https://ghfast.top/https://github.com/xisohi/TVBoxOSC/releases/download/XHlive"
 
     private val clientCache = mutableMapOf<String?, OkHttpClient>()
 
