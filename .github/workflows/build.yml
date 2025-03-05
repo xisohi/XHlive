@@ -25,6 +25,18 @@ jobs:
       - name: Run build with Gradle wrapper
         run: ./gradlew clean && ./gradlew assembleRelease
 
+      - name: Print APK Information
+        if: ${{ env.commit }}
+        working-directory: app/build/outputs/apk/release
+        run: |
+          if ls *.apk 1> /dev/null 2>&1; then
+            echo "Found APK files:"
+            ls -lh *.apk
+          else
+            echo "No APK files found in $(pwd)"
+            exit 1
+          fi
+
       - name: Sign app APK
         id: sign_app
         uses: r0adkll/sign-android-release@v1
