@@ -9,8 +9,6 @@ import com.lizongying.mytv0.Utils.formatUrl
 import okhttp3.ConnectionSpec
 import okhttp3.OkHttpClient
 import okhttp3.TlsVersion
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.security.KeyStore
@@ -21,18 +19,8 @@ import javax.net.ssl.X509TrustManager
 
 object HttpClient {
     const val TAG = "HttpClient"
-    private const val HOST = "https://xhys.lcjly.cn/update/"
-    const val DOWNLOAD_HOST = "https://ghfast.top/https://github.com/xisohi/TVBoxOSC/releases/download/XHlive"
 
     private val clientCache = mutableMapOf<String?, OkHttpClient>()
-
-    val releaseService: ReleaseService by lazy {
-        Retrofit.Builder()
-            .baseUrl(HOST)
-            .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build().create(ReleaseService::class.java)
-    }
 
     val okHttpClient: OkHttpClient by lazy {
         getClientWithProxy()

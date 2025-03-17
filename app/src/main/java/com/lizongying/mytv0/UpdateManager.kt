@@ -14,12 +14,14 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import androidx.fragment.app.FragmentActivity
+import com.lizongying.mytv0.Utils.getUrls
+import com.lizongying.mytv0.data.Global.gson
 import com.lizongying.mytv0.data.ReleaseResponse
 import com.lizongying.mytv0.requests.HttpClient
-import com.lizongying.mytv0.requests.ReleaseRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 
@@ -29,10 +31,38 @@ class UpdateManager(
 ) :
     ConfirmationFragment.ConfirmationListener {
 
-    private var releaseRequest = ReleaseRequest()
-    private var release: ReleaseResponse? = null
-
     private var downloadReceiver: DownloadReceiver? = null
+    var release: ReleaseResponse? = null
+
+    private suspend fun getRelease(): ReleaseResponse? {
+        val urls = getUrls(VERSION_URL)
+
+        for (u in urls) {
+            Log.i(TAG, "request $u")
+            withContext(Dispatchers.IO) {
+                try {
+                    val request = okhttp3.Request.Builder().url(u).build()
+                    val response = HttpClient.okHttpClient.newCall(request).execute()
+
+                    if (response.isSuccessful) {
+                        response.bodyAlias()?.let {
+                            return@withContext gson.fromJson(
+                                it.string(),
+                                ReleaseResponse::class.java
+                            )
+                        }
+                    } else {
+                        Log.e(TAG, "getRelease $u ${response.codeAlias()}")
+                    }
+                } catch (e: Exception) {
+//                    Log.e(TAG, "getRelease $u error", e)
+                    Log.e(TAG, "getRelease $u error")
+                }
+            }
+        }
+
+        return null
+    }
 
     fun checkAndUpdate() {
         Log.i(TAG, "checkAndUpdate")
@@ -40,10 +70,10 @@ class UpdateManager(
             var text = "版本获取失败"
             var update = false
             try {
-                release = releaseRequest.getRelease()
+                release = getRelease()
                 Log.i(TAG, "versionCode $versionCode ${release?.version_code}")
                 if (release?.version_code != null) {
-                    if (release?.version_code!! > versionCode) {
+                    if (release?.version_code!! >= versionCode) {
                         text = "最新版本：${release?.version_name}"
                         update = true
                     } else {
@@ -63,22 +93,20 @@ class UpdateManager(
     }
 
     private fun startDownload(release: ReleaseResponse) {
-        val apkName = "XHlive"
-        val apkFileName = "${apkName}.apk"
+        if (release.apk_name.isNullOrEmpty() || release.apk_url.isNullOrEmpty()) {
+            return
+        }
+
         val downloadManager =
             context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         val request =
-            Request(Uri.parse("${HttpClient.DOWNLOAD_HOST}/$apkFileName"))
-        Log.i(
-            TAG,
-            "url ${Uri.parse("${HttpClient.DOWNLOAD_HOST}/$apkFileName")}"
-        )
+            Request(Uri.parse(release.apk_url))
         context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)?.mkdirs()
         Log.i(TAG, "save dir ${Environment.DIRECTORY_DOWNLOADS}")
         request.setDestinationInExternalFilesDir(
             context,
             Environment.DIRECTORY_DOWNLOADS,
-            apkFileName
+            release.apk_name
         )
         request.setTitle("${context.getString(R.string.app_name)} ${release.version_name}")
         request.setNotificationVisibility(Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
@@ -88,19 +116,14 @@ class UpdateManager(
         // 获取下载任务的引用
         val downloadReference = downloadManager.enqueue(request)
 
-        downloadReceiver = DownloadReceiver(context, apkFileName, downloadReference)
+        downloadReceiver = DownloadReceiver(context, release.apk_name, downloadReference)
+
+        val intentFilter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.registerReceiver(
-                downloadReceiver,
-                IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
-                Context.RECEIVER_NOT_EXPORTED,
-            )
+            context.registerReceiver(downloadReceiver, intentFilter, Context.RECEIVER_NOT_EXPORTED)
         } else {
-            context.registerReceiver(
-                downloadReceiver,
-                IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
-            )
+            context.registerReceiver(downloadReceiver, intentFilter)
         }
 
         getDownloadProgress(context, downloadReference) { progress ->
@@ -230,6 +253,9 @@ class UpdateManager(
 
     companion object {
         private const val TAG = "UpdateManager"
+        private const val BUFFER_SIZE = 8192
+        private const val VERSION_URL =
+            "https://xhys.lcjly.cn/update/XHlive.json"
     }
 
     override fun onConfirm() {
