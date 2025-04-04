@@ -10,6 +10,9 @@ data class ReleaseResponse(
     @SerializedName("version_name")
     val version_name: String,
 
+    @SerializedName("release_notes")
+    val release_notes: String,
+
     @SerializedName("apk_name")
     val apk_name: String,
 
