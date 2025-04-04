@@ -52,7 +52,7 @@ class UpdateManager(
                 release?.let {
                     Log.i(TAG, "Local version: $versionCode, Remote version: ${it.version_code}")
                     if (it.version_code > versionCode) { // 仅当服务器版本更高时提示更新
-                        text = "发现新版本：${it.version_name}\\n更新内容：${it.release_notes}"
+                        text = "发现新版本：${it.version_name}"
                         update = true
                     } else {
                         text = "已是最新版本（v${it.version_name}）"
