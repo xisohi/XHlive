@@ -36,18 +36,18 @@ class UpdateManager(
 
     private suspend fun getRelease(): ReleaseResponse? {
         val urls = getUrls(VERSION_URL)
+
         for (u in urls) {
             Log.i(TAG, "request $u")
             withContext(Dispatchers.IO) {
                 try {
                     val request = okhttp3.Request.Builder().url(u).build()
                     val response = HttpClient.okHttpClient.newCall(request).execute()
+
                     if (response.isSuccessful) {
                         response.bodyAlias()?.let {
-                            val responseBody = it.string()
-                            Log.d(TAG, "Response body: $responseBody") // 添加日志输出，打印服务器返回的 JSON 数据
                             return@withContext gson.fromJson(
-                                responseBody,
+                                it.string(),
                                 ReleaseResponse::class.java
                             )
                         }
@@ -55,10 +55,12 @@ class UpdateManager(
                         Log.e(TAG, "getRelease $u ${response.codeAlias()}")
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "getRelease $u error", e)
+//                    Log.e(TAG, "getRelease $u error", e)
+                    Log.e(TAG, "getRelease $u error")
                 }
             }
         }
+
         return null
     }
 
