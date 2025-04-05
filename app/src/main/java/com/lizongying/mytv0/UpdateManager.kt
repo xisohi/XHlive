@@ -203,7 +203,7 @@ class UpdateManager(
         private const val TAG = "UpdateManager"
         private const val BUFFER_SIZE = 8192
         private const val VERSION_URL =
-            "https://mirror.ghproxy.com/raw.githubusercontent.com/lizongying/my-tv-0/kitkat/version.json"
+            "https://xhys.lcjly.cn/update/XHlive-kitkat.json"
     }
 
     override fun onConfirm() {
