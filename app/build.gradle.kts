@@ -13,8 +13,8 @@ android {
         applicationId = "com.lizongying.mytv0"
         minSdk = 21
         targetSdk = 35
-        versionCode = 250404
-        versionName = "25.04.04"
+        versionCode = 250427
+        versionName = "25.04.27"
     }
 
     buildFeatures {
