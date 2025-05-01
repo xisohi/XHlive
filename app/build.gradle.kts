@@ -13,8 +13,8 @@ android {
         applicationId = "com.lizongying.mytv0"
         minSdk = 19
         targetSdk = 35
-        versionCode = 250406
-        versionName = "25.04.06"
+        versionCode = getVersionCode()
+        versionName = getVersionName()
         multiDexEnabled = true
     }
 
