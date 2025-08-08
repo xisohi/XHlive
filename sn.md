@@ -1,4 +1,4 @@
-64卦下载：https://github.com/lizongying/go-gua64/releases
+64卦：https://lizongying.github.io/js-gua64/
 
 默认源：raw\channels.txt
 
