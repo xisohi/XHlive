@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.DisplayMetrics
+import android.util.Log
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.multidex.MultiDexApplication
@@ -35,7 +36,8 @@ class MyTVApplication : MultiDexApplication() {
     private var density = 2.0f
     private var scale = 1.0f
 
-    lateinit var imageHelper:ImageHelper
+    lateinit var imageHelper: ImageHelper
+    private lateinit var updateManager: UpdateManager
 
     override fun onCreate() {
         super.onCreate()
@@ -71,6 +73,44 @@ class MyTVApplication : MultiDexApplication() {
         Thread.setDefaultUncaughtExceptionHandler(MyTVExceptionHandler(this))
 
         imageHelper = ImageHelper(this)
+
+        // 初始化更新管理器并清理残留APK文件
+        initUpdateManager()
+    }
+
+    private fun initUpdateManager() {
+        try {
+            // 获取当前版本号
+            val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                packageManager.getPackageInfo(packageName, 0).longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getPackageInfo(packageName, 0).versionCode.toLong()
+            }
+
+            // 初始化更新管理器
+            updateManager = UpdateManager(this, versionCode)
+
+            // 在应用启动时清理残留的APK文件
+            updateManager.cleanupApkFilesOnStart()
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize UpdateManager", e)
+        }
+    }
+
+    // 获取更新管理器实例
+    fun getUpdateManager(): UpdateManager {
+        return updateManager
+    }
+
+    // 检查更新
+    fun checkForUpdates() {
+        try {
+            updateManager.checkAndUpdate()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking for updates", e)
+        }
     }
 
     fun getDisplayMetrics(): DisplayMetrics {
