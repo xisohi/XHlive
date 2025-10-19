@@ -103,6 +103,8 @@ class UpdateManager(
     private suspend fun getRelease(): ReleaseResponse? {
         return withContext(Dispatchers.IO) {
             try {
+                Log.d(TAG, "开始获取版本信息，URL: $VERSION_URL")
+
                 val request = OkHttpRequest.Builder()
                     .url(VERSION_URL)
                     .get()
@@ -119,6 +121,8 @@ class UpdateManager(
                     // 备用方法：从 toString() 解析
                     parseStatusCodeFromToString(response.toString())
                 }
+
+                Log.d(TAG, "HTTP响应码: $code")
 
                 if (code < 200 || code >= 300) {
                     Log.e(TAG, "HTTP错误: $code")
@@ -139,9 +143,24 @@ class UpdateManager(
                     }
                 }
 
-                responseBody?.string()?.let { json ->
-                    gson.fromJson(json, ReleaseResponse::class.java)
+                val jsonString = responseBody?.string()
+                if (jsonString.isNullOrEmpty()) {
+                    Log.e(TAG, "响应体为空")
+                    return@withContext null
                 }
+
+                Log.d(TAG, "获取到JSON响应: ${jsonString.take(200)}...") // 只打印前200个字符
+
+                // 解析JSON
+                return@withContext try {
+                    val releaseResponse = gson.fromJson(jsonString, ReleaseResponse::class.java)
+                    Log.d(TAG, "JSON解析成功: version_code=${releaseResponse.version_code}, version_name=${releaseResponse.version_name}")
+                    releaseResponse
+                } catch (e: Exception) {
+                    Log.e(TAG, "JSON解析失败: ${e.message}", e)
+                    null
+                }
+
             } catch (e: Exception) {
                 Log.e(TAG, "获取版本信息失败: ${e.message}", e)
                 null
@@ -167,8 +186,10 @@ class UpdateManager(
                 val deferred = CoroutineScope(Dispatchers.IO).async { getRelease() }
                 release = deferred.await()
                 val r = release
-                if (r != null && r.version_code != null) {
-                    if (r.version_code > versionCode) {
+                if (r != null) {
+                    Log.d(TAG, "版本信息: version_code=${r.version_code}, version_name=${r.version_name}, apk_url=${r.apk_url}")
+
+                    if (r.version_code != null && r.version_code > versionCode) {
                         text = buildString {
                             append("发现新版本：${r.version_name}")
                             if (!r.modifyContent.isNullOrBlank()) {
@@ -349,6 +370,49 @@ class UpdateManager(
     }
 
     /* ------------------------------------------------ */
+    /*  文件清理方法                                    */
+    /* ------------------------------------------------ */
+    private fun cleanupDownloadedFile(apkFileName: String) {
+        try {
+            val downloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            val apkFile = File(downloadsDir, apkFileName)
+
+            if (apkFile.exists()) {
+                if (apkFile.delete()) {
+                    Log.i(TAG, "APK文件已清理: ${apkFile.absolutePath}")
+                } else {
+                    Log.w(TAG, "APK文件删除失败: ${apkFile.absolutePath}")
+                }
+            } else {
+                Log.d(TAG, "APK文件不存在，无需清理: $apkFileName")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "清理APK文件失败: ${e.message}", e)
+        }
+    }
+
+    /* ------------------------------------------------ */
+    /*  清理所有下载的APK文件                           */
+    /* ------------------------------------------------ */
+    fun cleanupAllDownloadedFiles() {
+        try {
+            val downloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            downloadsDir?.listFiles()?.forEach { file ->
+                if (file.isFile && file.name.endsWith(".apk")) {
+                    if (file.delete()) {
+                        Log.i(TAG, "清理APK文件: ${file.name}")
+                    } else {
+                        Log.w(TAG, "清理APK文件失败: ${file.name}")
+                    }
+                }
+            }
+            Log.i(TAG, "所有APK文件清理完成")
+        } catch (e: Exception) {
+            Log.e(TAG, "清理所有APK文件失败: ${e.message}", e)
+        }
+    }
+
+    /* ------------------------------------------------ */
     /*  广播接收器：详细状态 + 失败原因 + 标志复位      */
     /* ------------------------------------------------ */
     private inner class DownloadReceiver(
@@ -391,6 +455,9 @@ class UpdateManager(
                             }
                             Log.e(TAG, "下载失败: $msg")
                             Toast.makeText(strongContext, msg, Toast.LENGTH_LONG).show()
+
+                            // 下载失败时也清理文件
+                            cleanupDownloadedFile(apkFileName)
                         }
                         DownloadManager.STATUS_PAUSED -> {
                             val reason = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
@@ -438,15 +505,26 @@ class UpdateManager(
                 if (intent.resolveActivity(context.packageManager) != null) {
                     context.startActivity(intent)
                     Log.i(TAG, "启动安装程序成功")
+
+                    // 安装完成后延迟清理文件（给安装程序一些时间读取文件）
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        cleanupDownloadedFile(apkFileName)
+                    }, 5000) // 延迟5秒清理，确保安装程序已完成文件读取
                 } else {
                     val errorMsg = "无法找到安装程序"
                     Log.e(TAG, errorMsg)
                     Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
+
+                    // 无法安装时也清理文件
+                    cleanupDownloadedFile(apkFileName)
                 }
 
             } catch (e: Exception) {
                 Log.e(TAG, "安装失败: ${e.message}", e)
                 Toast.makeText(context, "安装失败: ${e.message}", Toast.LENGTH_LONG).show()
+
+                // 安装失败时清理文件
+                cleanupDownloadedFile(apkFileName)
             }
         }
     }
