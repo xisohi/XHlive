@@ -1,6 +1,5 @@
 package com.lizongying.mytv0
 
-
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -31,6 +30,7 @@ class UpdateManager(
 
     private var release: ReleaseResponse? = null
 
+    /* ========== 获取升级信息 ========== */
     private suspend fun getRelease(): ReleaseResponse? {
         return withContext(Dispatchers.IO) {
             try {
@@ -40,7 +40,6 @@ class UpdateManager(
 
                 HttpClient.okHttpClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) return@withContext null
-
                     response.bodyAlias()?.let {
                         return@withContext gson.fromJson(it.string(), ReleaseResponse::class.java)
                     }
@@ -53,6 +52,7 @@ class UpdateManager(
         }
     }
 
+    /* ========== 主入口：检查并弹窗 ========== */
     fun checkAndUpdate() {
         Log.i(TAG, "checkAndUpdate")
         CoroutineScope(Dispatchers.Main).launch {
@@ -61,9 +61,15 @@ class UpdateManager(
             try {
                 release = getRelease()
                 Log.i(TAG, "versionCode $versionCode ${release?.version_code}")
-                if (release?.version_code != null) {
-                    if (release?.version_code!! > versionCode) {
-                        text = "最新版本：${release?.version_name}"
+                val r = release
+                if (r?.version_code != null) {
+                    if (r.version_code > versionCode) {
+                        text = buildString {
+                            append("发现新版本：${r.version_name}")
+                            if (!r.modifyContent.isNullOrBlank()) {
+                                append("\n\n📋 升级内容：\n${r.modifyContent}")
+                            }
+                        }
                         update = true
                     } else {
                         text = "已是最新版本，不需要更新"
@@ -76,20 +82,18 @@ class UpdateManager(
         }
     }
 
+    /* ========== 弹窗 ========== */
     private fun updateUI(text: String, update: Boolean) {
         val dialog = ConfirmationFragment(this@UpdateManager, text, update)
         dialog.show((context as FragmentActivity).supportFragmentManager, TAG)
     }
 
+    /* ========== 下载相关 ========== */
     private fun startDownload(release: ReleaseResponse) {
-        if (release.apk_name.isNullOrEmpty() || release.apk_url.isNullOrEmpty()) {
-            return
-        }
+        if (release.apk_name.isNullOrEmpty() || release.apk_url.isNullOrEmpty()) return
 
         var downloadDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-        if (downloadDir == null) {
-            downloadDir = File(context.filesDir, "downloads")
-        }
+        if (downloadDir == null) downloadDir = File(context.filesDir, "downloads")
         cleanupDownloadDirectory(downloadDir, release.apk_name)
         val file = File(downloadDir, release.apk_name)
         file.parentFile?.mkdirs()
@@ -100,16 +104,10 @@ class UpdateManager(
     }
 
     private fun cleanupDownloadDirectory(directory: File?, apkNamePrefix: String) {
-        directory?.let { dir ->
-            dir.listFiles()?.forEach { file ->
-                if (file.name.startsWith(apkNamePrefix) && file.name.endsWith(".apk")) {
-                    val deleted = file.delete()
-                    if (deleted) {
-                        Log.i(TAG, "Deleted old APK file: ${file.name}")
-                    } else {
-                        Log.e(TAG, "Failed to delete old APK file: ${file.name}")
-                    }
-                }
+        directory?.listFiles()?.forEach {
+            if (it.name.startsWith(apkNamePrefix) && it.name.endsWith(".apk")) {
+                if (it.delete()) Log.i(TAG, "Deleted old APK: ${it.name}")
+                else Log.e(TAG, "Failed to delete old APK: ${it.name}")
             }
         }
     }
@@ -119,84 +117,84 @@ class UpdateManager(
         while (retries < maxRetries) {
             try {
                 downloadFile(url, file)
-                // If download is successful, break the loop
                 break
             } catch (e: IOException) {
                 Log.e(TAG, "Download failed: ${e.message}")
                 retries++
                 if (retries >= maxRetries) {
-                    Log.e(TAG, "Max retries reached. Download failed.")
                     withContext(Dispatchers.Main) {
-                        // Notify user about download failure
                         updateUI("下载失败，请检查网络连接后重试", false)
                     }
                 } else {
-                    Log.i(TAG, "Retrying download (${retries}/${maxRetries})")
-                    delay(30000) // Wait for 30 seconds before retrying
+                    Log.i(TAG, "Retrying download ($retries/$maxRetries)")
+                    delay(30000)
                 }
             }
         }
     }
 
     private suspend fun downloadFile(url: String, file: File) {
-        val request = okhttp3.Request.Builder().url(url)
-            .addHeader("Accept", "application/vnd.android.package-archive").build()
+        val request = okhttp3.Request.Builder()
+            .url(url)
+            .addHeader("Accept", "application/vnd.android.package-archive")
+            .build()
         val response = okHttpClient.newCall(request).execute()
         if (!response.isSuccessful) throw IOException("Unexpected code $response")
 
         val body = response.bodyAlias() ?: throw IOException("Null response body")
-        val actualMimeType = body.contentType()?.toString()
-        if (actualMimeType != "application/vnd.android.package-archive") {
-            throw IOException("Unexpected MIME type: $actualMimeType. Expected: application/vnd.android.package-archive")
-        }
         val contentLength = body.contentLength()
         var bytesRead = 0L
 
-        body.byteStream().use { inputStream ->
-            file.outputStream().use { outputStream ->
+        body.byteStream().use { input ->
+            file.outputStream().use { output ->
                 val buffer = ByteArray(BUFFER_SIZE)
                 var bytes: Int
-                while (inputStream.read(buffer).also { bytes = it } != -1) {
-                    outputStream.write(buffer, 0, bytes)
+                while (input.read(buffer).also { bytes = it } != -1) {
+                    output.write(buffer, 0, bytes)
                     bytesRead += bytes
                     val progress =
                         if (contentLength > 0) (bytesRead * 100 / contentLength).toInt() else -1
-                    withContext(Dispatchers.Main) {
-                        updateDownloadProgress(progress)
-                    }
+                    withContext(Dispatchers.Main) { updateDownloadProgress(progress) }
                 }
             }
         }
 
-        withContext(Dispatchers.Main) {
-            installNewVersion(file)
-        }
+        withContext(Dispatchers.Main) { installNewVersion(file) }
     }
 
     private fun updateDownloadProgress(progress: Int) {
         if (progress == -1) {
-            // Log when progress can't be determined
             Log.i(TAG, "Download in progress, size unknown")
         } else if (progress % 10 == 0 && progress != lastLoggedProgress) {
-            // Log every 10% and avoid duplicate logs
-            Log.i(TAG, "Download progress: $progress%")
             lastLoggedProgress = progress
+            Log.i(TAG, "Download progress: $progress%")
             "升级文件已经下载：${progress}%".showToast()
         }
     }
 
     private fun installNewVersion(apkFile: File) {
         if (apkFile.exists()) {
-            val apkUri = Uri.fromFile(apkFile) // Use Uri.fromFile for Android 4.4
+            val apkUri = Uri.fromFile(apkFile)
             Log.i(TAG, "apkUri $apkUri")
-            val installIntent = Intent(Intent.ACTION_VIEW).apply {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(apkUri, "application/vnd.android.package-archive")
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            context.startActivity(installIntent)
+            context.startActivity(intent)
         } else {
             Log.e(TAG, "APK file does not exist!")
         }
+    }
+
+    /* ========== 接口回调 ========== */
+    override fun onConfirm() {
+        release?.let { startDownload(it) }
+    }
+
+    override fun onCancel() {}
+
+    fun destroy() {
+        downloadJob?.cancel()
     }
 
     companion object {
@@ -204,17 +202,5 @@ class UpdateManager(
         private const val BUFFER_SIZE = 8192
         private const val VERSION_URL =
             "https://xhys.lcjly.cn/update/XHlive-kitkat.json"
-    }
-
-    override fun onConfirm() {
-        Log.i(TAG, "onConfirm $release")
-        release?.let { startDownload(it) }
-    }
-
-    override fun onCancel() {
-    }
-
-    fun destroy() {
-        downloadJob?.cancel()
     }
 }
