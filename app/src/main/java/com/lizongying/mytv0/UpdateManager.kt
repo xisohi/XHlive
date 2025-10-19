@@ -61,14 +61,39 @@ class UpdateManager(
                 val req = OkHttpRequest.Builder().url(url).head().build()
                 val rsp = HttpClient.okHttpClient.newCall(req).execute()
 
-                // 使用反射访问 code 字段
-                val codeField = rsp.javaClass.getDeclaredField("code")
-                codeField.isAccessible = true
-                codeField.getInt(rsp)
+                // 方法1：使用公共方法获取状态码
+                try {
+                    // 尝试调用 code() 方法
+                    val codeMethod = rsp.javaClass.getMethod("code")
+                    codeMethod.invoke(rsp) as Int
+                } catch (e: Exception) {
+                    // 方法2：如果方法不存在，尝试其他方式
+                    try {
+                        // 尝试访问公共字段
+                        rsp.javaClass.getField("code").getInt(rsp)
+                    } catch (e2: Exception) {
+                        // 方法3：使用 toString() 解析
+                        parseStatusCodeFromToString(rsp.toString())
+                    }
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "URL探测失败: ${e.message}", e)
                 -1
             }
+        }
+    }
+
+    /* ------------------------------------------------ */
+    /*  从 toString() 中解析状态码的备用方法            */
+    /* ------------------------------------------------ */
+    private fun parseStatusCodeFromToString(toString: String): Int {
+        return try {
+            // Response 的 toString() 通常包含 "Response{protocol=..., code=200, ...}"
+            val regex = "code=(\\d+)".toRegex()
+            val match = regex.find(toString)
+            match?.groupValues?.get(1)?.toInt() ?: -1
+        } catch (e: Exception) {
+            -1
         }
     }
 
@@ -85,22 +110,36 @@ class UpdateManager(
 
                 val response = HttpClient.okHttpClient.newCall(request).execute()
 
-                // 使用反射访问 code 字段
-                val codeField = response.javaClass.getDeclaredField("code")
-                codeField.isAccessible = true
-                val code = codeField.getInt(response)
+                // 获取状态码
+                val code = try {
+                    // 尝试调用 code() 方法
+                    val codeMethod = response.javaClass.getMethod("code")
+                    codeMethod.invoke(response) as Int
+                } catch (e: Exception) {
+                    // 备用方法：从 toString() 解析
+                    parseStatusCodeFromToString(response.toString())
+                }
 
                 if (code < 200 || code >= 300) {
                     Log.e(TAG, "HTTP错误: $code")
                     return@withContext null
                 }
 
-                // 使用反射访问 body 字段
-                val bodyField = response.javaClass.getDeclaredField("body")
-                bodyField.isAccessible = true
-                val body = bodyField.get(response) as okhttp3.ResponseBody?
+                // 获取响应体
+                val responseBody = try {
+                    // 尝试调用 body() 方法
+                    val bodyMethod = response.javaClass.getMethod("body")
+                    bodyMethod.invoke(response) as okhttp3.ResponseBody?
+                } catch (e: Exception) {
+                    // 备用方法：尝试访问 body 字段
+                    try {
+                        response.javaClass.getField("body").get(response) as okhttp3.ResponseBody?
+                    } catch (e2: Exception) {
+                        null
+                    }
+                }
 
-                body?.string()?.let { json ->
+                responseBody?.string()?.let { json ->
                     gson.fromJson(json, ReleaseResponse::class.java)
                 }
             } catch (e: Exception) {
