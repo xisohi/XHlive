@@ -62,7 +62,7 @@ class UpdateManager(
             try {
                 val req = OkHttpRequest.Builder().url(url).head().build()
                 val rsp = HttpClient.okHttpClient.newCall(req).execute()
-                rsp.code
+                rsp.code // 使用属性而不是方法
             } catch (e: Exception) {
                 Log.e(TAG, "URL探测失败: ${e.message}", e)
                 -1
@@ -87,7 +87,7 @@ class UpdateManager(
 
                 val response = HttpClient.okHttpClient.newCall(request).execute()
 
-                // 直接使用 response.code() 方法
+                // 使用 response.code 属性而不是方法
                 val code = response.code
                 Log.d(TAG, "HTTP响应码: $code")
                 Log.d(TAG, "响应头: ${response.headers}")
@@ -97,7 +97,7 @@ class UpdateManager(
                     return@withContext null
                 }
 
-                // 直接使用 response.body() 方法
+                // 使用 response.body 属性而不是方法
                 val responseBody = response.body
                 val jsonString = responseBody?.string()
 
@@ -155,6 +155,7 @@ class UpdateManager(
         CoroutineScope(Dispatchers.Main).launch {
             var text = "版本获取失败"
             var update = false
+
             try {
                 val deferred = CoroutineScope(Dispatchers.IO).async { getReleaseWithRetry() }
                 release = deferred.await()
@@ -183,7 +184,14 @@ class UpdateManager(
                 text = "检查更新时发生错误：${e.message}"
                 Log.e(TAG, "检查更新错误: ${e.message}", e)
             }
-            updateUI(text, update)
+
+            // 只有在需要更新时才显示对话框
+            if (update) {
+                updateUI(text, update)
+            } else {
+                // 不需要更新时，直接显示Toast信息
+                Toast.makeText(context, text, Toast.LENGTH_LONG).show()
+            }
         }
     }
 
