@@ -5,11 +5,14 @@ import android.content.Context
 import android.content.res.Configuration
 import android.content.res.Resources
 import android.os.Build
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.util.DisplayMetrics
+import android.util.Log
 import android.view.WindowManager
 import android.widget.Toast
+import java.io.File
 import java.util.Locale
 
 class MyTVApplication : Application() {
@@ -41,6 +44,9 @@ class MyTVApplication : Application() {
         super.onCreate()
         instance = this
 
+        // 在应用启动时清理旧的APK文件
+        cleanupOldApkFiles()
+
         displayMetrics = DisplayMetrics()
         realDisplayMetrics = DisplayMetrics()
         val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -71,6 +77,39 @@ class MyTVApplication : Application() {
         Thread.setDefaultUncaughtExceptionHandler(MyTVExceptionHandler(this))
 
         imageHelper = ImageHelper(this)
+    }
+
+    /**
+     * 清理旧的APK文件
+     * 在应用启动时调用，确保安装完成后清理残留文件
+     */
+    private fun cleanupOldApkFiles() {
+        try {
+            val downloadsDir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            val files = downloadsDir?.listFiles()
+            if (files != null) {
+                var cleanedCount = 0
+                files.forEach { file ->
+                    if (file.isFile && file.name.endsWith(".apk")) {
+                        if (file.delete()) {
+                            Log.i(TAG, "清理旧的APK文件: ${file.name}")
+                            cleanedCount++
+                        } else {
+                            Log.w(TAG, "清理APK文件失败: ${file.name}")
+                        }
+                    }
+                }
+                if (cleanedCount > 0) {
+                    Log.i(TAG, "APK文件清理完成，共清理 $cleanedCount 个文件")
+                } else {
+                    Log.d(TAG, "没有需要清理的APK文件")
+                }
+            } else {
+                Log.d(TAG, "下载目录为空，无需清理")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "清理APK文件失败: ${e.message}")
+        }
     }
 
     fun getDisplayMetrics(): DisplayMetrics {

@@ -492,16 +492,17 @@ class UpdateManager(
                     context.startActivity(intent)
                     Log.i(TAG, "启动安装程序成功")
 
-                    // 安装完成后延迟清理文件（给安装程序一些时间读取文件）
-                    Handler(Looper.getMainLooper()).postDelayed({
-                        cleanupDownloadedFile(apkFileName)
-                    }, 5000) // 延迟5秒清理，确保安装程序已完成文件读取
+                    // 不立即清理文件，等待下次应用启动时自动清理
+                    Log.i(TAG, "APK文件将在下次应用启动时自动清理: ${apkFile.absolutePath}")
+
+                    // 可选：给用户一个提示
+                    Toast.makeText(context, "正在启动安装程序...", Toast.LENGTH_SHORT).show()
                 } else {
                     val errorMsg = "无法找到安装程序"
                     Log.e(TAG, errorMsg)
                     Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
 
-                    // 无法安装时也清理文件
+                    // 无法安装时清理文件
                     cleanupDownloadedFile(apkFileName)
                 }
 
