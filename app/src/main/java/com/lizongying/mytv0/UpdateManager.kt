@@ -60,7 +60,11 @@ class UpdateManager(
             try {
                 val req = OkHttpRequest.Builder().url(url).head().build()
                 val rsp = HttpClient.okHttpClient.newCall(req).execute()
-                rsp.code()
+
+                // 使用反射访问 code 字段
+                val codeField = rsp.javaClass.getDeclaredField("code")
+                codeField.isAccessible = true
+                codeField.getInt(rsp)
             } catch (e: Exception) {
                 Log.e(TAG, "URL探测失败: ${e.message}", e)
                 -1
@@ -80,12 +84,23 @@ class UpdateManager(
                     .build()
 
                 val response = HttpClient.okHttpClient.newCall(request).execute()
-                if (!response.isSuccessful) {
-                    Log.e(TAG, "HTTP错误: ${response.code()}")
+
+                // 使用反射访问 code 字段
+                val codeField = response.javaClass.getDeclaredField("code")
+                codeField.isAccessible = true
+                val code = codeField.getInt(response)
+
+                if (code < 200 || code >= 300) {
+                    Log.e(TAG, "HTTP错误: $code")
                     return@withContext null
                 }
 
-                response.body()?.string()?.let { json ->
+                // 使用反射访问 body 字段
+                val bodyField = response.javaClass.getDeclaredField("body")
+                bodyField.isAccessible = true
+                val body = bodyField.get(response) as okhttp3.ResponseBody?
+
+                body?.string()?.let { json ->
                     gson.fromJson(json, ReleaseResponse::class.java)
                 }
             } catch (e: Exception) {
