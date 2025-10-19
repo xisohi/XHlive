@@ -62,7 +62,7 @@ class UpdateManager(
             try {
                 val req = OkHttpRequest.Builder().url(url).head().build()
                 val rsp = HttpClient.okHttpClient.newCall(req).execute()
-                rsp.code()
+                rsp.code
             } catch (e: Exception) {
                 Log.e(TAG, "URL探测失败: ${e.message}", e)
                 -1
@@ -83,14 +83,14 @@ class UpdateManager(
                     .get()
                     .build()
 
-                Log.d(TAG, "请求头: ${request.headers()}")
+                Log.d(TAG, "请求头: ${request.headers}")
 
                 val response = HttpClient.okHttpClient.newCall(request).execute()
 
                 // 直接使用 response.code() 方法
-                val code = response.code()
+                val code = response.code
                 Log.d(TAG, "HTTP响应码: $code")
-                Log.d(TAG, "响应头: ${response.headers()}")
+                Log.d(TAG, "响应头: ${response.headers}")
 
                 if (code != 200) {
                     Log.e(TAG, "HTTP错误: $code")
@@ -98,7 +98,7 @@ class UpdateManager(
                 }
 
                 // 直接使用 response.body() 方法
-                val responseBody = response.body()
+                val responseBody = response.body
                 val jsonString = responseBody?.string()
 
                 if (jsonString.isNullOrEmpty()) {
