@@ -30,6 +30,7 @@ class UpdateManager(
     private var lastLoggedProgress = -1
 
     private var release: ReleaseResponse? = null
+    private var hasUpdate = false // 新增：标记是否有更新
 
     /* ========== 权限和网络检查 ========== */
     private fun hasWritePermission(): Boolean {
@@ -119,9 +120,6 @@ class UpdateManager(
     fun checkAndUpdate() {
         Log.i(TAG, "checkAndUpdate")
 
-        // 先清理可能存在的残留APK文件
-        cleanupApkFilesOnStart()
-
         // 检查存储权限
         if (!hasWritePermission()) {
             "无存储权限，无法下载更新".showToast()
@@ -145,13 +143,16 @@ class UpdateManager(
                             }
                         }
                         update = true
+                        hasUpdate = true // 设置标记为有更新
                     } else {
                         text = "已是最新版本，不需要更新"
+                        hasUpdate = false // 设置标记为无更新
                     }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error occurred: ${e.message}", e)
                 text = "版本检查异常: ${e.message}"
+                hasUpdate = false
             }
             updateUI(text, update)
         }
@@ -344,7 +345,13 @@ class UpdateManager(
 
     /* ========== 接口回调 ========== */
     override fun onConfirm() {
-        release?.let { startDownload(it) }
+        // 只有在有更新的情况下才下载
+        if (hasUpdate) {
+            release?.let { startDownload(it) }
+        } else {
+            // 没有更新时，点击确认只是关闭对话框
+            Log.i(TAG, "User confirmed no update available")
+        }
     }
 
     override fun onCancel() {
