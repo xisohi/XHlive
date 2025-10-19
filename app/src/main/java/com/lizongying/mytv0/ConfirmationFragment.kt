@@ -14,26 +14,14 @@ class ConfirmationFragment(
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         return activity?.let {
             val builder = AlertDialog.Builder(it)
-            builder.setTitle(message)
-            if (update) {
-                builder.setMessage("确定更新吗？")
-                    .setPositiveButton(
-                        "确定"
-                    ) { _, _ ->
-                        listener.onConfirm()
-                    }
-                    .setNegativeButton(
-                        "取消"
-                    ) { _, _ ->
-                        listener.onCancel()
-                    }
-            } else {
-                builder.setMessage("")
-                    .setNegativeButton(
-                        "确定"
-                    ) { _, _ ->
-                    }
-            }
+            builder.setTitle("版本更新")
+                .setMessage(message)   // ✅ 把完整文本放这里
+                .setPositiveButton("确定") { _, _ ->
+                    listener.onConfirm()
+                }
+                .setNegativeButton("取消") { _, _ ->
+                    listener.onCancel()
+                }
             builder.create()
         } ?: throw IllegalStateException("Activity cannot be null")
     }
@@ -43,4 +31,3 @@ class ConfirmationFragment(
         fun onCancel()
     }
 }
-
