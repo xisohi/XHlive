@@ -26,11 +26,13 @@ import com.lizongying.mytv0.requests.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.Request as OkHttpRequest
 import java.io.File
 import java.lang.ref.WeakReference
+import java.util.concurrent.TimeUnit
 
 class UpdateManager(
     private var context: Context,
@@ -60,22 +62,7 @@ class UpdateManager(
             try {
                 val req = OkHttpRequest.Builder().url(url).head().build()
                 val rsp = HttpClient.okHttpClient.newCall(req).execute()
-
-                // 方法1：使用公共方法获取状态码
-                try {
-                    // 尝试调用 code() 方法
-                    val codeMethod = rsp.javaClass.getMethod("code")
-                    codeMethod.invoke(rsp) as Int
-                } catch (e: Exception) {
-                    // 方法2：如果方法不存在，尝试其他方式
-                    try {
-                        // 尝试访问公共字段
-                        rsp.javaClass.getField("code").getInt(rsp)
-                    } catch (e2: Exception) {
-                        // 方法3：使用 toString() 解析
-                        parseStatusCodeFromToString(rsp.toString())
-                    }
-                }
+                rsp.code()
             } catch (e: Exception) {
                 Log.e(TAG, "URL探测失败: ${e.message}", e)
                 -1
@@ -84,21 +71,7 @@ class UpdateManager(
     }
 
     /* ------------------------------------------------ */
-    /*  从 toString() 中解析状态码的备用方法            */
-    /* ------------------------------------------------ */
-    private fun parseStatusCodeFromToString(toString: String): Int {
-        return try {
-            // Response 的 toString() 通常包含 "Response{protocol=..., code=200, ...}"
-            val regex = "code=(\\d+)".toRegex()
-            val match = regex.find(toString)
-            match?.groupValues?.get(1)?.toInt() ?: -1
-        } catch (e: Exception) {
-            -1
-        }
-    }
-
-    /* ------------------------------------------------ */
-    /*  获取版本信息                                    */
+    /*  获取版本信息（带重试机制）                      */
     /* ------------------------------------------------ */
     private suspend fun getRelease(): ReleaseResponse? {
         return withContext(Dispatchers.IO) {
@@ -110,46 +83,30 @@ class UpdateManager(
                     .get()
                     .build()
 
+                Log.d(TAG, "请求头: ${request.headers()}")
+
                 val response = HttpClient.okHttpClient.newCall(request).execute()
 
-                // 获取状态码
-                val code = try {
-                    // 尝试调用 code() 方法
-                    val codeMethod = response.javaClass.getMethod("code")
-                    codeMethod.invoke(response) as Int
-                } catch (e: Exception) {
-                    // 备用方法：从 toString() 解析
-                    parseStatusCodeFromToString(response.toString())
-                }
-
+                // 直接使用 response.code() 方法
+                val code = response.code()
                 Log.d(TAG, "HTTP响应码: $code")
+                Log.d(TAG, "响应头: ${response.headers()}")
 
-                if (code < 200 || code >= 300) {
+                if (code != 200) {
                     Log.e(TAG, "HTTP错误: $code")
                     return@withContext null
                 }
 
-                // 获取响应体
-                val responseBody = try {
-                    // 尝试调用 body() 方法
-                    val bodyMethod = response.javaClass.getMethod("body")
-                    bodyMethod.invoke(response) as okhttp3.ResponseBody?
-                } catch (e: Exception) {
-                    // 备用方法：尝试访问 body 字段
-                    try {
-                        response.javaClass.getField("body").get(response) as okhttp3.ResponseBody?
-                    } catch (e2: Exception) {
-                        null
-                    }
-                }
-
+                // 直接使用 response.body() 方法
+                val responseBody = response.body()
                 val jsonString = responseBody?.string()
+
                 if (jsonString.isNullOrEmpty()) {
                     Log.e(TAG, "响应体为空")
                     return@withContext null
                 }
 
-                Log.d(TAG, "获取到JSON响应: ${jsonString.take(200)}...") // 只打印前200个字符
+                Log.d(TAG, "获取到JSON响应: $jsonString")
 
                 // 解析JSON
                 return@withContext try {
@@ -169,6 +126,22 @@ class UpdateManager(
     }
 
     /* ------------------------------------------------ */
+    /*  带重试机制的版本获取                            */
+    /* ------------------------------------------------ */
+    private suspend fun getReleaseWithRetry(retryCount: Int = 2): ReleaseResponse? {
+        repeat(retryCount) { attempt ->
+            val result = getRelease()
+            if (result != null) return result
+
+            if (attempt < retryCount - 1) {
+                Log.w(TAG, "获取版本信息失败，第${attempt + 1}次重试...")
+                delay(2000) // 延迟2秒后重试
+            }
+        }
+        return null
+    }
+
+    /* ------------------------------------------------ */
     /*  主入口：检查 + 弹窗（含 ModifyContent）         */
     /* ------------------------------------------------ */
     fun checkAndUpdate() {
@@ -183,7 +156,7 @@ class UpdateManager(
             var text = "版本获取失败"
             var update = false
             try {
-                val deferred = CoroutineScope(Dispatchers.IO).async { getRelease() }
+                val deferred = CoroutineScope(Dispatchers.IO).async { getReleaseWithRetry() }
                 release = deferred.await()
                 val r = release
                 if (r != null) {
@@ -203,7 +176,7 @@ class UpdateManager(
                         Log.i(TAG, "当前已是最新版本")
                     }
                 } else {
-                    text = "无法获取最新版本信息"
+                    text = "无法获取最新版本信息，请检查网络连接或稍后重试"
                     Log.w(TAG, "版本信息为空或格式错误")
                 }
             } catch (e: Exception) {
@@ -216,11 +189,16 @@ class UpdateManager(
 
     private fun updateUI(text: String, update: Boolean) {
         try {
-            val dialog = ConfirmationFragment(this@UpdateManager, text, update)
-            dialog.show((context as FragmentActivity).supportFragmentManager, TAG)
+            // 检查上下文是否有效
+            if (context is FragmentActivity && !(context as FragmentActivity).isFinishing) {
+                val dialog = ConfirmationFragment(this@UpdateManager, text, update)
+                dialog.show((context as FragmentActivity).supportFragmentManager, TAG)
+            } else {
+                Toast.makeText(context.applicationContext, text, Toast.LENGTH_LONG).show()
+            }
         } catch (e: Exception) {
             Log.e(TAG, "显示更新对话框失败: ${e.message}", e)
-            Toast.makeText(context, "显示更新界面失败", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context.applicationContext, "显示更新界面失败: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 

@@ -11,7 +11,7 @@ data class ReleaseResponse(
     val version_name: String,
 
     @SerializedName("ModifyContent")
-    val modifyContent: String? = null,   // 新增字段，允许为空
+    val modifyContent: String? = null,
 
     @SerializedName("apk_name")
     val apk_name: String,
