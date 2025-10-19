@@ -1,5 +1,6 @@
 package com.lizongying.mytv0
 
+import android.annotation.SuppressLint
 import android.app.DownloadManager
 import android.app.DownloadManager.Request
 import android.content.BroadcastReceiver
@@ -7,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.database.Cursor
+import android.net.ConnectivityManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -14,6 +16,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.core.content.FileProvider
 import com.lizongying.mytv0.Utils.getUrls
@@ -25,57 +28,90 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.IOException
 import okhttp3.Request as OkHttpRequest
+import java.io.File
+import java.lang.ref.WeakReference
 
 class UpdateManager(
     private var context: Context,
     private var versionCode: Long
 ) : ConfirmationFragment.ConfirmationListener {
 
+    private var isDownloading = false
     private var downloadReceiver: DownloadReceiver? = null
+    private var progressHandler: Handler? = null
+    private var progressRunnable: Runnable? = null
     var release: ReleaseResponse? = null
 
     /* ------------------------------------------------ */
-    /*  网络请求：获取升级信息                           */
+    /*  网络状态检查                                    */
     /* ------------------------------------------------ */
-    private suspend fun getRelease(): ReleaseResponse? {
-        val urls = getUrls(VERSION_URL)
-        for (u in urls) {
-            try {
-                return withContext(Dispatchers.IO) {
-                    val request = OkHttpRequest.Builder().url(u).build()
-                    HttpClient.okHttpClient.newCall(request).execute().use { response ->
-                        if (!response.isSuccessful) return@withContext null
-                        response.body?.string()?.let { json ->
-                            gson.fromJson(json, ReleaseResponse::class.java)
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "getRelease $u failed", e)
-            }
-        }
-        return null
+    private fun isNetworkAvailable(): Boolean {
+        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE)
+                as? ConnectivityManager
+        return connectivityManager?.activeNetworkInfo?.isConnected == true
     }
 
     /* ------------------------------------------------ */
-    /*  主入口：检查 + 弹窗                             */
+    /*  网络探测：HEAD 请求快速检查 apk_url 是否有效     */
+    /* ------------------------------------------------ */
+    private suspend fun probeUrl(url: String): Int {
+        return withContext(Dispatchers.IO) {
+            try {
+                val req = OkHttpRequest.Builder().url(url).head().build()
+                val rsp = HttpClient.okHttpClient.newCall(req).execute()
+                rsp.code()
+            } catch (e: Exception) {
+                Log.e(TAG, "URL探测失败: ${e.message}", e)
+                -1
+            }
+        }
+    }
+
+    /* ------------------------------------------------ */
+    /*  获取版本信息                                    */
+    /* ------------------------------------------------ */
+    private suspend fun getRelease(): ReleaseResponse? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val request = OkHttpRequest.Builder()
+                    .url(VERSION_URL)
+                    .get()
+                    .build()
+
+                val response = HttpClient.okHttpClient.newCall(request).execute()
+                if (!response.isSuccessful) {
+                    Log.e(TAG, "HTTP错误: ${response.code()}")
+                    return@withContext null
+                }
+
+                response.body()?.string()?.let { json ->
+                    gson.fromJson(json, ReleaseResponse::class.java)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "获取版本信息失败: ${e.message}", e)
+                null
+            }
+        }
+    }
+
+    /* ------------------------------------------------ */
+    /*  主入口：检查 + 弹窗（含 ModifyContent）         */
     /* ------------------------------------------------ */
     fun checkAndUpdate() {
-        Log.i(TAG, "checkAndUpdate")
+        Log.i(TAG, "开始检查更新")
+
+        if (!isNetworkAvailable()) {
+            Toast.makeText(context, "网络不可用，请检查网络连接", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         CoroutineScope(Dispatchers.Main).launch {
             var text = "版本获取失败"
             var update = false
             try {
-                val deferredRelease = CoroutineScope(Dispatchers.IO).async {
-                    getRelease()
-                }
-                release = deferredRelease.await()
-                Log.i(TAG, "release object: $release")
-                Log.i(TAG, "versionCode $versionCode ${release?.version_code}")
-
+                val deferred = CoroutineScope(Dispatchers.IO).async { getRelease() }
+                release = deferred.await()
                 val r = release
                 if (r != null && r.version_code != null) {
                     if (r.version_code > versionCode) {
@@ -86,168 +122,323 @@ class UpdateManager(
                             }
                         }
                         update = true
+                        Log.i(TAG, "发现新版本: ${r.version_name} (${r.version_code})")
                     } else {
                         text = "已是最新版本，不需要更新"
+                        Log.i(TAG, "当前已是最新版本")
                     }
                 } else {
                     text = "无法获取最新版本信息"
-                    Log.e(TAG, "release is null or version_code is null")
+                    Log.w(TAG, "版本信息为空或格式错误")
                 }
             } catch (e: Exception) {
                 text = "检查更新时发生错误：${e.message}"
-                Log.e(TAG, "Error occurred: ${e.message}", e)
+                Log.e(TAG, "检查更新错误: ${e.message}", e)
             }
             updateUI(text, update)
         }
     }
 
-    /* ------------------------------------------------ */
-    /*  弹窗                                            */
-    /* ------------------------------------------------ */
     private fun updateUI(text: String, update: Boolean) {
-        val dialog = ConfirmationFragment(this@UpdateManager, text, update)
-        dialog.show((context as FragmentActivity).supportFragmentManager, TAG)
+        try {
+            val dialog = ConfirmationFragment(this@UpdateManager, text, update)
+            dialog.show((context as FragmentActivity).supportFragmentManager, TAG)
+        } catch (e: Exception) {
+            Log.e(TAG, "显示更新对话框失败: ${e.message}", e)
+            Toast.makeText(context, "显示更新界面失败", Toast.LENGTH_SHORT).show()
+        }
     }
 
     /* ------------------------------------------------ */
-    /*  DownloadManager 下载 + 进度轮询 + 安装          */
+    /*  下载：重复点击保护 + 链接失效探测               */
     /* ------------------------------------------------ */
     private fun startDownload(release: ReleaseResponse) {
+        if (isDownloading) {
+            Toast.makeText(context, "已在下载中，请勿重复点击", Toast.LENGTH_SHORT).show()
+            return
+        }
         if (release.apk_name.isNullOrEmpty() || release.apk_url.isNullOrEmpty()) {
-            Log.e(TAG, "APK 名称或 URL 为空")
+            Toast.makeText(context, "下载地址无效", Toast.LENGTH_SHORT).show()
             return
         }
 
-        val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val request = Request(Uri.parse(release.apk_url))
-        context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)?.mkdirs()
-        request.setDestinationInExternalFilesDir(
-            context,
-            Environment.DIRECTORY_DOWNLOADS,
-            release.apk_name
-        )
-        request.setTitle("${context.getString(R.string.app_name)} ${release.version_name}")
-        request.setNotificationVisibility(Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-        request.setAllowedOverRoaming(false)
-        request.setMimeType("application/vnd.android.package-archive")
-
-        val downloadId = downloadManager.enqueue(request)
-        downloadReceiver = DownloadReceiver(context, release.apk_name, downloadId)
-
-        val intentFilter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.registerReceiver(downloadReceiver, intentFilter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            context.registerReceiver(downloadReceiver, intentFilter)
-        }
-
-        getDownloadProgress(context, downloadId) { progress ->
-            Log.i(TAG, "Download progress: $progress%")
+        CoroutineScope(Dispatchers.Main).launch {
+            Log.d(TAG, "开始下载探测: ${release.apk_name}, URL: ${release.apk_url}")
+            val code = probeUrl(release.apk_url)
+            if (code != 200) {
+                val errorMsg = "下载链接失效（HTTP $code）"
+                Log.e(TAG, errorMsg)
+                Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
+                return@launch
+            }
+            enqueueDownload(release)
         }
     }
 
+    private fun enqueueDownload(release: ReleaseResponse) {
+        try {
+            isDownloading = true
+            val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            val request = Request(Uri.parse(release.apk_url))
+
+            // 确保下载目录存在
+            context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)?.mkdirs()
+
+            request.setDestinationInExternalFilesDir(
+                context,
+                Environment.DIRECTORY_DOWNLOADS,
+                release.apk_name
+            )
+            request.setTitle("${context.getString(R.string.app_name)} ${release.version_name}")
+            request.setDescription("正在下载新版本")
+            request.setNotificationVisibility(Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            request.setAllowedOverRoaming(false)
+            request.setMimeType(MIME_TYPE_APK)
+
+            // 设置网络类型限制
+            request.setAllowedNetworkTypes(Request.NETWORK_WIFI or Request.NETWORK_MOBILE)
+
+            val downloadId = dm.enqueue(request)
+            Log.d(TAG, "下载任务已创建, ID: $downloadId")
+
+            downloadReceiver = DownloadReceiver(
+                WeakReference(context),
+                release.apk_name,
+                downloadId
+            )
+
+            // 修复：使用条件编译处理不同Android版本的广播注册
+            registerDownloadReceiverWithFlags()
+
+            getDownloadProgress(context, downloadId) { progress ->
+                Log.i(TAG, "下载进度: $progress%")
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "创建下载任务失败: ${e.message}", e)
+            Toast.makeText(context, "创建下载任务失败", Toast.LENGTH_SHORT).show()
+            isDownloading = false
+        }
+    }
+
+    /* ------------------------------------------------ */
+    /*  修复：使用条件编译处理广播注册                  */
+    /* ------------------------------------------------ */
+    @SuppressLint("UnspecifiedRegisterReceiverFlag")
+    private fun registerDownloadReceiverWithFlags() {
+        val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+        val receiver = downloadReceiver ?: return
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // Android 13+ 需要明确指定导出标志
+                context.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
+                Log.d(TAG, "使用RECEIVER_EXPORTED注册广播接收器")
+            } else {
+                // Android 12及以下使用传统方法
+                context.registerReceiver(receiver, filter)
+                Log.d(TAG, "使用传统方法注册广播接收器")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "注册广播接收器失败: ${e.message}", e)
+            Toast.makeText(context, "下载监控初始化失败", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /* ------------------------------------------------ */
+    /*  进度轮询（优化版本）                           */
+    /* ------------------------------------------------ */
     private fun getDownloadProgress(
         context: Context,
         downloadId: Long,
         progressListener: (Int) -> Unit
     ) {
-        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val handler = Handler(Looper.getMainLooper())
-        val interval: Long = 1000
-
-        handler.post(object : Runnable {
+        progressHandler = Handler(Looper.getMainLooper())
+        val runnable = object : Runnable {
             override fun run() {
-                val query = DownloadManager.Query().setFilterById(downloadId)
-                val cursor = dm.query(query)
-                cursor.use {
-                    if (it.moveToFirst()) {
-                        val down =
-                            it.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
-                        val total =
-                            it.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
-                        if (total >= 0 && down >= 0) {
-                            val progress =
-                                (it.getInt(down) * 100L / it.getInt(total)).toInt()
-                            progressListener(progress)
-                            if (progress == 100) return
+                try {
+                    val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                    val query = DownloadManager.Query().setFilterById(downloadId)
+                    val cursor: Cursor? = dm.query(query)
+
+                    cursor?.use {
+                        if (it.moveToFirst()) {
+                            val down = it.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
+                            val total = it.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
+                            if (total >= 0 && down >= 0) {
+                                val totalSize = it.getLong(total)
+                                val downloaded = it.getLong(down)
+                                if (totalSize > 0) {
+                                    val progress = (downloaded * 100L / totalSize).toInt()
+                                    progressListener(progress)
+                                    if (progress < 100) {
+                                        progressHandler?.postDelayed(this, PROGRESS_UPDATE_INTERVAL)
+                                    } else {
+                                        Log.i(TAG, "下载完成，停止进度轮询")
+                                    }
+                                }
+                            }
+                        } else {
+                            // 下载任务可能已被移除
+                            progressHandler?.removeCallbacks(this)
+                            Log.w(TAG, "下载任务已被移除，停止进度轮询")
                         }
                     }
+                } catch (e: Exception) {
+                    Log.e(TAG, "获取下载进度失败: ${e.message}", e)
+                    progressHandler?.removeCallbacks(this)
                 }
-                handler.postDelayed(this, interval)
             }
-        })
+        }
+        progressRunnable = runnable
+        progressHandler?.post(runnable)
     }
 
     /* ------------------------------------------------ */
-    /*  广播接收器：下载完成 -> 安装                     */
+    /*  广播接收器：详细状态 + 失败原因 + 标志复位      */
     /* ------------------------------------------------ */
-    private class DownloadReceiver(
-        private val context: Context,
+    private inner class DownloadReceiver(
+        private val contextRef: WeakReference<Context>,
         private val apkFileName: String,
         private val downloadId: Long
     ) : BroadcastReceiver() {
 
         override fun onReceive(context: Context, intent: Intent) {
+            val strongContext = contextRef.get() ?: return
             val ref = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
             if (ref != downloadId) return
 
-            val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            val dm = strongContext.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
             val query = DownloadManager.Query().setFilterById(downloadId)
             val cursor = dm.query(query)
+
             cursor?.use {
                 if (it.moveToFirst()) {
                     val status = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
                     when (status) {
-                        DownloadManager.STATUS_SUCCESSFUL -> installNewVersion()
+                        DownloadManager.STATUS_SUCCESSFUL -> {
+                            Log.i(TAG, "下载成功")
+                            isDownloading = false
+                            installNewVersion(strongContext)
+                        }
                         DownloadManager.STATUS_FAILED -> {
-                            Toast.makeText(context, "下载失败，请稍后重试", Toast.LENGTH_SHORT).show()
+                            isDownloading = false
+                            val reason = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
+                            val msg = when (reason) {
+                                DownloadManager.ERROR_CANNOT_RESUME -> "无法恢复下载"
+                                DownloadManager.ERROR_DEVICE_NOT_FOUND -> "外部存储未找到"
+                                DownloadManager.ERROR_FILE_ALREADY_EXISTS -> "文件已存在"
+                                DownloadManager.ERROR_FILE_ERROR -> "文件 IO 错误"
+                                DownloadManager.ERROR_HTTP_DATA_ERROR -> "HTTP 数据错误"
+                                DownloadManager.ERROR_INSUFFICIENT_SPACE -> "存储空间不足"
+                                DownloadManager.ERROR_TOO_MANY_REDIRECTS -> "重定向过多"
+                                DownloadManager.ERROR_UNHANDLED_HTTP_CODE -> "未处理 HTTP 状态"
+                                else -> "下载失败（代码=$reason）"
+                            }
+                            Log.e(TAG, "下载失败: $msg")
+                            Toast.makeText(strongContext, msg, Toast.LENGTH_LONG).show()
+                        }
+                        DownloadManager.STATUS_PAUSED -> {
+                            val reason = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
+                            Log.w(TAG, "下载暂停，reason=$reason")
+                        }
+                        DownloadManager.STATUS_RUNNING -> {
+                            Log.d(TAG, "下载进行中")
                         }
                     }
+                } else {
+                    Log.w(TAG, "下载任务不存在")
                 }
             }
         }
 
-        private fun installNewVersion() {
-            val apkFile = File(
-                context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
-                apkFileName
-            )
-            if (!apkFile.exists()) {
-                Toast.makeText(context, "APK 文件不存在", Toast.LENGTH_SHORT).show()
-                return
+        private fun installNewVersion(context: Context) {
+            try {
+                val downloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                val apkFile = File(downloadsDir, apkFileName)
+
+                if (!apkFile.exists() || !apkFile.canRead()) {
+                    Log.e(TAG, "APK 文件无法访问: ${apkFile.absolutePath}")
+                    Toast.makeText(context, "APK 文件无法访问", Toast.LENGTH_SHORT).show()
+                    return
+                }
+
+                Log.d(TAG, "准备安装 APK: ${apkFile.absolutePath}")
+
+                val apkUri = FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.provider",
+                    apkFile
+                )
+
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(apkUri, MIME_TYPE_APK)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                }
+
+                // 检查是否有应用可以处理安装意图
+                if (intent.resolveActivity(context.packageManager) != null) {
+                    context.startActivity(intent)
+                    Log.i(TAG, "启动安装程序成功")
+                } else {
+                    val errorMsg = "无法找到安装程序"
+                    Log.e(TAG, errorMsg)
+                    Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "安装失败: ${e.message}", e)
+                Toast.makeText(context, "安装失败: ${e.message}", Toast.LENGTH_LONG).show()
             }
-            val apkUri = FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.provider",
-                apkFile
-            )
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(apkUri, "application/vnd.android.package-archive")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            context.startActivity(intent)
         }
     }
 
     /* ------------------------------------------------ */
-    /*   companion & 回调                              */
+    /*  生命周期 & 回调                               */
     /* ------------------------------------------------ */
     companion object {
         private const val TAG = "UpdateManager"
-        private const val BUFFER_SIZE = 8192
         private const val VERSION_URL = "https://xhys.lcjly.cn/update/XHlive.json"
+        private const val MIME_TYPE_APK = "application/vnd.android.package-archive"
+        private const val PROGRESS_UPDATE_INTERVAL = 1000L // 1秒
     }
 
     override fun onConfirm() {
+        Log.d(TAG, "用户确认更新")
         release?.let { startDownload(it) }
     }
 
-    override fun onCancel() {}
+    override fun onCancel() {
+        Log.d(TAG, "用户取消更新")
+    }
 
     fun destroy() {
+        Log.d(TAG, "销毁 UpdateManager")
+
+        // 取消广播接收器
         downloadReceiver?.let {
-            context.unregisterReceiver(it)
+            try {
+                context.unregisterReceiver(it)
+                Log.d(TAG, "广播接收器已取消注册")
+            } catch (e: Exception) {
+                Log.w(TAG, "取消注册广播接收器失败: ${e.message}")
+            }
             downloadReceiver = null
         }
+
+        // 停止进度轮询
+        progressRunnable?.let { runnable ->
+            progressHandler?.removeCallbacks(runnable)
+            Log.d(TAG, "进度轮询已停止")
+        }
+        progressHandler = null
+        progressRunnable = null
+
+        // 重置状态
+        isDownloading = false
     }
 }
