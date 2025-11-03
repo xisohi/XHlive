@@ -1,3 +1,4 @@
+64卦：https://lizongying.github.io/js-gua64/
 
 文件转为64卦格式：gua64 -f -e 明文.txt -o 64卦.txt
 
