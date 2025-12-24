@@ -1,0 +1,121 @@
+name: build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 11 (兼容Android)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Setup Android SDK (兼容Android 4.4)
+        run: |
+          # 下载命令行工具
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+          mkdir -p android-sdk
+          unzip -q commandlinetools-linux-9477386_latest.zip -d android-sdk
+          
+          # 设置环境变量
+          echo "ANDROID_SDK_ROOT=$PWD/android-sdk" >> $GITHUB_ENV
+          echo "ANDROID_HOME=$PWD/android-sdk" >> $GITHUB_ENV
+          echo "$PWD/android-sdk/cmdline-tools/bin" >> $GITHUB_PATH
+          
+          # 接受许可证
+          yes | $ANDROID_HOME/cmdline-tools/bin/sdkmanager --licenses || true
+          
+          # 安装Android 4.4兼容组件
+          $ANDROID_HOME/cmdline-tools/bin/sdkmanager \
+            "platforms;android-19" \
+            "build-tools;30.0.3" \
+            "platform-tools" \
+            "ndk;23.2.8568313"
+
+      - name: Run build with Gradle wrapper (Android 4.4兼容)
+        run: |
+          # 授予执行权限
+          chmod +x ./gradlew
+          # 构建release
+          ./gradlew clean assembleRelease --stacktrace
+          
+          # 检查APK信息
+          $ANDROID_HOME/build-tools/30.0.3/aapt dump badging app/build/outputs/apk/release/app-release-unsigned.apk | head -5
+
+      - name: Sign app APK (兼容签名)
+        id: sign_app
+        run: |
+          echo "使用兼容Android 4.4的签名方式..."
+          
+          # 对齐APK
+          $ANDROID_HOME/build-tools/30.0.3/zipalign -v -p 4 \
+            app/build/outputs/apk/release/app-release-unsigned.apk \
+            app/build/outputs/apk/release/app-release-aligned.apk
+          
+          # 解码Base64密钥库
+          echo "${{ secrets.KEYSTORE }}" | base64 --decode > my-release-key.keystore
+          
+          # 使用apksigner签名（确保启用v1签名）
+          $ANDROID_HOME/build-tools/30.0.3/apksigner sign \
+            --ks my-release-key.keystore \
+            --ks-pass pass:"${{ secrets.KEYSTORE_PASSWORD }}" \
+            --key-pass pass:"${{ secrets.ALIAS_PASSWORD }}" \
+            --ks-key-alias "${{ secrets.ALIAS }}" \
+            --v1-signing-enabled true \  # Android 4.4必须启用v1签名
+            --v2-signing-enabled true \
+            --v3-signing-enabled false \  # Android 4.4不需要v3
+            --out app/build/outputs/apk/release/app-release-signed.apk \
+            app/build/outputs/apk/release/app-release-aligned.apk
+          
+          # 验证签名
+          $ANDROID_HOME/build-tools/30.0.3/apksigner verify --verbose \
+            app/build/outputs/apk/release/app-release-signed.apk
+          
+          # 输出签名文件路径
+          echo "signedReleaseFile=app/build/outputs/apk/release/app-release-signed.apk" >> $GITHUB_OUTPUT
+
+      - name: Get History
+        id: get_history
+        run: |
+          chmod +x history.sh
+          output=$(./history.sh)
+          echo "$output" > history.md
+          echo "历史记录已生成"
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Android 4.4兼容版本 ${{ github.ref }}
+          draft: false
+          prerelease: false
+          body_path: history.md
+
+      - name: Set Asset Name
+        id: set_asset_name
+        run: |
+          VERSION_WITHOUT_V=$(echo '${{ github.ref_name }}' | sed 's/^v//')
+          echo "asset_name=my-tv-0_${VERSION_WITHOUT_V}_android4.4.apk" >> $GITHUB_ENV
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: app/build/outputs/apk/release/app-release-signed.apk
+          asset_name: ${{ env.asset_name }}
+          asset_content_type: application/vnd.android.package-archive
