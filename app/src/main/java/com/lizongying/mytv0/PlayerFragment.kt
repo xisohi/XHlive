@@ -284,8 +284,18 @@ class PlayerFragment : Fragment() {
         super.onDestroyView()
         _binding = null
     }
-
+    @OptIn(UnstableApi::class)
     companion object {
         private const val TAG = "PlayerFragment"
+
+        init {
+            try {
+                // 检查 FFmpeg 是否可用
+                val ffmpegAvailable = androidx.media3.decoder.ffmpeg.FfmpegLibrary.isAvailable()
+                Log.i(TAG, "FFmpeg decoder available: $ffmpegAvailable")
+            } catch (e: Exception) {
+                Log.e(TAG, "FFmpeg check failed: ${e.message}")
+            }
+        }
     }
 }

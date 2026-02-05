@@ -22,6 +22,7 @@ import com.lizongying.mytv0.data.TV
 import com.lizongying.mytv0.requests.HttpClient
 import kotlin.math.max
 import kotlin.math.min
+import com.lizongying.mytv0.data.RtpMulticastDataSource
 
 class TVModel(var tv: TV) : ViewModel() {
     var retryTimes = 0
@@ -202,7 +203,11 @@ class TVModel(var tv: TV) : ViewModel() {
                     .createMediaSource(mediaItem)
             }
 
-            SourceType.RTP -> null
+            SourceType.RTP -> {
+                val rtpDataSource = RtpMulticastDataSource.Factory()
+                ProgressiveMediaSource.Factory(rtpDataSource)
+                    .createMediaSource(mediaItem)
+            }
 
             SourceType.DASH -> DashMediaSource.Factory(httpDataSource).createMediaSource(mediaItem)
             SourceType.PROGRESSIVE -> ProgressiveMediaSource.Factory(httpDataSource)
