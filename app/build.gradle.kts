@@ -79,6 +79,7 @@ dependencies {
     implementation(libs.media3.exoplayer.rtsp)
     implementation(libs.media3.datasource.okhttp)
     implementation(libs.media3.datasource.rtmp)
+    implementation(libs.coroutines)
 
     implementation(libs.nanohttpd)
     implementation(libs.gua64)

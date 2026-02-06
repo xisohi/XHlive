@@ -184,6 +184,14 @@ class TVModel(var tv: TV) : ViewModel() {
         }
         val mediaItem = _mediaItem!!
 
+        // RTP 特殊处理：不需要 httpDataSource
+        if (getSourceTypeCurrent() == SourceType.RTP) {
+            return ProgressiveMediaSource.Factory(
+                DataSource.Factory { RtpMulticastDataSource() }
+            ).createMediaSource(mediaItem)
+        }
+
+        // 其他类型需要 httpDataSource
         if (_httpDataSource == null) {
             return null
         }
@@ -203,11 +211,7 @@ class TVModel(var tv: TV) : ViewModel() {
                     .createMediaSource(mediaItem)
             }
 
-            SourceType.RTP -> {
-                val rtpDataSource = RtpMulticastDataSource.Factory()
-                ProgressiveMediaSource.Factory(rtpDataSource)
-                    .createMediaSource(mediaItem)
-            }
+            SourceType.RTP -> null // 已经处理过了，不会到这里
 
             SourceType.DASH -> DashMediaSource.Factory(httpDataSource).createMediaSource(mediaItem)
             SourceType.PROGRESSIVE -> ProgressiveMediaSource.Factory(httpDataSource)
