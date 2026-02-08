@@ -1,5 +1,6 @@
 package com.lizongying.mytv0.models
 
+import android.content.Context
 import android.net.Uri
 import androidx.annotation.OptIn
 import androidx.lifecycle.LiveData
@@ -18,13 +19,27 @@ import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import com.lizongying.mytv0.IgnoreSSLCertificate
 import com.lizongying.mytv0.SP
 import com.lizongying.mytv0.data.EPG
+import com.lizongying.mytv0.data.MulticastLockManager
 import com.lizongying.mytv0.data.Program
+import com.lizongying.mytv0.data.RtpDataSourceFactory
 import com.lizongying.mytv0.data.SourceType
 import com.lizongying.mytv0.data.TV
 import kotlin.math.max
 import kotlin.math.min
 
 class TVModel(var tv: TV) : ViewModel() {
+    private var appContext: Context? = null
+    private var multicastLockManager: MulticastLockManager? = null
+
+    fun setContext(context: Context) {
+        this.appContext = context.applicationContext
+        this.multicastLockManager = MulticastLockManager(context.applicationContext)
+    }
+
+    // 🆕 释放组播锁（切换频道或销毁时调用）
+    fun releaseMulticastLock() {
+        multicastLockManager?.release()
+    }
     var retryTimes = 0
     var retryMaxTimes = 10
     var programUpdateTime = 0L
@@ -213,7 +228,14 @@ class TVModel(var tv: TV) : ViewModel() {
                     .createMediaSource(mediaItem)
             }
 
-            SourceType.RTP -> null
+            SourceType.RTP -> {
+                val ctx = appContext ?: return null
+                multicastLockManager?.acquire()  // 🆕 获取组播锁
+
+                val rtpDataSource = RtpDataSourceFactory(ctx)
+                ProgressiveMediaSource.Factory(rtpDataSource)
+                    .createMediaSource(mediaItem)
+            }
 
             SourceType.DASH -> DashMediaSource.Factory(httpDataSource).createMediaSource(mediaItem)
             SourceType.PROGRESSIVE -> ProgressiveMediaSource.Factory(httpDataSource)
