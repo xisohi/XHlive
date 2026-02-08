@@ -169,7 +169,7 @@ object Utils {
                 "https://ghproxy.net/",
                 "https://github.catvod.com/",
                 "https://gh.xisohi.dpdns.org/",
-                "https://ghfast.top"
+                "https://ghfast.top/"
             ).map {
                 "$it$url"
             }

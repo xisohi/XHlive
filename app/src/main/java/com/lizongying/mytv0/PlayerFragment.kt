@@ -24,7 +24,8 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
 import com.lizongying.mytv0.data.SourceType
 import com.lizongying.mytv0.databinding.PlayerBinding
 import com.lizongying.mytv0.models.TVModel
-
+import android.content.Context
+import com.lizongying.mytv0.data.RtpDataSourceFactory
 
 class PlayerFragment : Fragment() {
     private var _binding: PlayerBinding? = null
@@ -168,7 +169,9 @@ class PlayerFragment : Fragment() {
 
     @OptIn(UnstableApi::class)
     fun play(tvModel: TVModel) {
+        this.tvModel?.releaseMulticastLock()
         this.tvModel = tvModel
+        tvModel.setContext(requireContext())  // 🆕 注入Context，支持RTP播放
         player?.run {
             tvModel.getVideoUrl() ?: return
 
@@ -277,6 +280,7 @@ class PlayerFragment : Fragment() {
 
     override fun onDestroy() {
         super.onDestroy()
+        tvModel?.releaseMulticastLock()
         player?.release()
     }
 
@@ -284,18 +288,7 @@ class PlayerFragment : Fragment() {
         super.onDestroyView()
         _binding = null
     }
-    @OptIn(UnstableApi::class)
     companion object {
         private const val TAG = "PlayerFragment"
-
-        init {
-            try {
-                // 检查 FFmpeg 是否可用
-                val ffmpegAvailable = androidx.media3.decoder.ffmpeg.FfmpegLibrary.isAvailable()
-                Log.i(TAG, "FFmpeg decoder available: $ffmpegAvailable")
-            } catch (e: Exception) {
-                Log.e(TAG, "FFmpeg check failed: ${e.message}")
-            }
-        }
     }
 }
