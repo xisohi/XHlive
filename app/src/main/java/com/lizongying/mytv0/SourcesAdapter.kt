@@ -124,7 +124,10 @@ class SourcesAdapter(
             }
 
             viewHolder.bindNum("%02d".format(position))
-            viewHolder.bindTitle(source.uri)
+//            viewHolder.bindTitle(source.uri)
+            // 修改后：显示名称（如果name为空则显示uri作为后备）
+            val displayName = source.name.ifEmpty { source.uri }
+            viewHolder.bindTitle(displayName)
         }
     }
 

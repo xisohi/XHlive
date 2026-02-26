@@ -167,7 +167,17 @@ class SimpleServer(private val context: Context, private val viewModel: MainView
             readBody(session)?.let {
                 val req = gson.fromJson(it, ReqSourceAdd::class.java)
                 val uri = Uri.parse(req.uri)
+
+                // 创建 Source 时传入 name
+                val source = Source(
+                    uri = req.uri,
+                    name = req.name  // 传入前端提交的名称
+                )
+
                 handler.post {
+                    // 先添加到 sources 列表（带名称）
+                    viewModel.sources.addSource(source)
+                    // 然后导入频道
                     viewModel.importFromUri(uri, req.id)
                 }
             }

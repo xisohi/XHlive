@@ -65,8 +65,13 @@ class Sources {
         if (index == -1) {
             setSourceChecked(checkedValue, false)
 
+            // 确保有 name（兼容旧数据）
+            val sourceWithName = if (source.name.isEmpty()) {
+                source.copy(name = "未命名")  // 或从URL识别
+            } else source
+
             _sources.value = sourcesValue.toMutableList().apply {
-                add(0, source)
+                add(0, sourceWithName)  // 注意用 sourceWithName
             }
 
             _checked.value = 0

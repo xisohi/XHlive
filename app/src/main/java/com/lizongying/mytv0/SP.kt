@@ -97,13 +97,25 @@ object SP {
             .use {
                 val str = it.readText()
                 if (str.isNotEmpty()) {
-                    DEFAULT_SOURCES = gson.toJson(
-                        Gua().decode(str).trim().split("\n").map { i ->
+                    val lines = Gua().decode(str).trim().split("\n")
+                    val sources = lines.mapNotNull { line ->
+                        val trimmed = line.trim()
+                        if (trimmed.isEmpty()) return@mapNotNull null
+
+                        // 解析 "名称,URL" 格式
+                        val parts = trimmed.split(",", limit = 2)
+                        if (parts.size >= 2) {
+                            // 新格式：名称,URL
                             Source(
-                                uri = i
+                                uri = parts[1].trim(),
+                                name = parts[0].trim()
                             )
-                        }, typeSourceList
-                    ) ?: ""
+                        } else {
+                            // 旧格式：只有URL（兼容）
+                            Source(uri = trimmed)
+                        }
+                    }
+                    DEFAULT_SOURCES = gson.toJson(sources, typeSourceList) ?: ""
                 }
             }
 
