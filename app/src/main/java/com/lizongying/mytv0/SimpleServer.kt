@@ -171,14 +171,15 @@ class SimpleServer(private val context: Context, private val viewModel: MainView
                 // 创建 Source 时传入 name
                 val source = Source(
                     uri = req.uri,
-                    name = req.name  // 传入前端提交的名称
+                    name = req.name,  // 传入前端提交的名称
+                    ua = req.ua  // 添加UA
                 )
 
                 handler.post {
                     // 先添加到 sources 列表（带名称）
                     viewModel.sources.addSource(source)
                     // 然后导入频道
-                    viewModel.importFromUri(uri, req.id)
+                    viewModel.importFromUri(uri, req.id, req.ua)  // 传递UA
                 }
             }
         } catch (e: Exception) {

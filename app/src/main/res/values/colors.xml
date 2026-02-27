@@ -10,4 +10,5 @@
     <color name="track_unchecked">#B3EEEEEE</color>
     <color name="thumb_checked">#0096A6</color>
     <color name="thumb_unchecked">#FFEEEEEE</color>
+    <color name="has_ua_color">#FFA500</color>
 </resources>

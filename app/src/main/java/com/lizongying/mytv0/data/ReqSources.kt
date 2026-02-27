@@ -7,5 +7,6 @@ data class ReqSources(
 data class ReqSourceAdd(
     val id: String,
     var uri: String,
-    val name: String = ""  // 新增 name 字段
+    val name: String = "",  // 新增 name 字段
+    val ua: String = ""  // 新增 UA 字段
 )

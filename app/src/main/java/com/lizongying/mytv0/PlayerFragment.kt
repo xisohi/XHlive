@@ -110,6 +110,14 @@ class PlayerFragment : Fragment() {
                     tv.confirmVideoIndex()
                     tv.setErrInfo("")
                     tv.retryTimes = 0
+
+                    // 🆕 播放成功时打印UA信息（调试用）
+                    val ua = tv.getUserAgent()
+                    val hasCustomUA = tv.hasCustomUserAgent()
+                    Log.i(TAG, "播放成功: ${tv.tv.title}, 自定义UA: $hasCustomUA")
+                    if (hasCustomUA) {
+                        Log.i(TAG, "使用的UA: $ua")
+                    }
                 } else {
                     Log.i(TAG, "${tv.tv.title} 播放停止")
                 }
@@ -135,6 +143,10 @@ class PlayerFragment : Fragment() {
                 }
 
                 val tv = tvModel!!
+
+                // 🆕 播放错误时打印UA信息（便于调试）
+                Log.e(TAG, "播放错误: ${tv.tv.title}, 使用的UA: ${tv.getUserAgent()}")
+                Log.e(TAG, "错误信息: ${error.message}")
 
                 if (tv.retryTimes < tv.retryMaxTimes) {
                     var last = true
@@ -172,6 +184,17 @@ class PlayerFragment : Fragment() {
         this.tvModel?.releaseMulticastLock()
         this.tvModel = tvModel
         tvModel.setContext(requireContext())  // 🆕 注入Context，支持RTP播放
+
+        // 🆕 打印UA信息
+        val ua = tvModel.getUserAgent()
+        val hasCustomUA = tvModel.hasCustomUserAgent()
+        Log.i(TAG, "准备播放: ${tvModel.tv.title}")
+        Log.i(TAG, "视频地址: ${tvModel.getVideoUrl()}")
+        Log.i(TAG, "使用自定义UA: $hasCustomUA")
+        if (hasCustomUA) {
+            Log.i(TAG, "UA: $ua")
+        }
+
         player?.run {
             tvModel.getVideoUrl() ?: return
 
@@ -288,6 +311,7 @@ class PlayerFragment : Fragment() {
         super.onDestroyView()
         _binding = null
     }
+
     companion object {
         private const val TAG = "PlayerFragment"
     }

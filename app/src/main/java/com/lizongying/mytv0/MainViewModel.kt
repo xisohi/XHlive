@@ -267,7 +267,7 @@ class MainViewModel : ViewModel() {
         return success
     }
 
-    private suspend fun importFromUrl(url: String, id: String = "") {
+    private suspend fun importFromUrl(url: String, id: String = "", ua: String = "") {
         val urls = getUrls(url).map { Pair(it, url) }
 
         var err = 0
@@ -276,7 +276,13 @@ class MainViewModel : ViewModel() {
             Log.i(TAG, "request $a")
             withContext(Dispatchers.IO) {
                 try {
-                    val request = okhttp3.Request.Builder().url(a).build()
+                    // 创建带有 UA 的请求
+                    val requestBuilder = okhttp3.Request.Builder().url(a)
+                    if (ua.isNotEmpty()) {
+                        requestBuilder.addHeader("User-Agent", ua)
+                    }
+                    val request = requestBuilder.build()
+
                     val response = HttpClient.okHttpClient.newCall(request).execute()
 
                     if (response.isSuccessful) {
@@ -325,7 +331,7 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    fun importFromUri(uri: Uri, id: String = "") {
+    fun importFromUri(uri: Uri, id: String = "", ua: String = "") {
         if (uri.scheme == "file") {
             val file = uri.toFile()
             Log.i(TAG, "file $file")
@@ -339,12 +345,12 @@ class MainViewModel : ViewModel() {
             tryStr2Channels(str, file, uri.toString(), id)
         } else {
             viewModelScope.launch {
-                importFromUrl(uri.toString(), id)
+                importFromUrl(uri.toString(), id, ua)  // 传递UA
             }
         }
     }
 
-    fun tryStr2Channels(str: String, file: File?, url: String, id: String = "") {
+    fun tryStr2Channels(str: String, file: File?, url: String, id: String = "", ua: String = "") {
         try {
             if (str2Channels(str)) {
                 Log.i(TAG, "write to cacheFile $cacheFile $str")
@@ -355,11 +361,10 @@ class MainViewModel : ViewModel() {
                     SP.configUrl = url
                     val source = Source(
                         id = id,
-                        uri = url
+                        uri = url,
+                        ua = ua  // 保存UA
                     )
-                    sources.addSource(
-                        source
-                    )
+                    sources.addSource(source)
                 }
                 _channelsOk.value = true
                 R.string.channel_import_success.showToast()
@@ -482,7 +487,7 @@ class MainViewModel : ViewModel() {
                         "",
                         uris,
                         0,
-                        t0.headers,
+                        t0.headers,  // 这里保存了headers，包含UA信息
                         t0.group,
                         SourceType.UNKNOWN,
                         t0.number,
@@ -495,6 +500,7 @@ class MainViewModel : ViewModel() {
             }
 
             else -> {
+                // TXT格式处理
                 val lines = string.lines()
                 var group = ""
                 val l = mutableListOf<TV>()
@@ -532,7 +538,7 @@ class MainViewModel : ViewModel() {
                         "",
                         uris,
                         0,
-                        emptyMap(),
+                        emptyMap(),  // TXT格式不支持headers
                         channelGroup,
                         SourceType.UNKNOWN,
                         -1,

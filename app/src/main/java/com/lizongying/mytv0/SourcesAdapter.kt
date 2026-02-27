@@ -10,6 +10,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.setPadding
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.lizongying.mytv0.data.Source
 import com.lizongying.mytv0.databinding.SourcesItemBinding
 import com.lizongying.mytv0.models.Sources
 import java.util.Locale
@@ -135,6 +136,17 @@ class SourcesAdapter(
 
     class ViewHolder(private val context: Context, val binding: SourcesItemBinding) :
         RecyclerView.ViewHolder(binding.root) {
+        fun bindSource(source: Source) {
+            // 显示名称
+            val displayName = if (source.name.isNotEmpty()) source.name else source.uri
+            binding.title.text = displayName
+
+            // 如果有UA，可以添加一个小图标或文字提示
+            if (source.ua.isNotEmpty()) {
+                // 可以设置一个图标或改变背景色来表示有UA设置
+                binding.root.setBackgroundColor(ContextCompat.getColor(context, R.color.has_ua_color))
+            }
+        }
         fun bindNum(text: String) {
             binding.num.text = text
         }

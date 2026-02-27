@@ -39,6 +39,7 @@ class TVModel(var tv: TV) : ViewModel() {
     fun releaseMulticastLock() {
         multicastLockManager?.release()
     }
+
     var retryTimes = 0
     var retryMaxTimes = 10
     var programUpdateTime = 0L
@@ -119,10 +120,33 @@ class TVModel(var tv: TV) : ViewModel() {
         _ready.value = true
     }
 
-    private var userAgent = ""
+    // 添加默认UA常量 - 放在 companion object 中
+    private var userAgent = DEFAULT_USER_AGENT
+    private var allHeaders: Map<String, String>? = null
 
     private var _httpDataSource: DataSource.Factory? = null
     private var _mediaItem: MediaItem? = null
+
+    /**
+     * 获取当前频道的User-Agent
+     */
+    fun getUserAgent(): String {
+        return userAgent
+    }
+
+    /**
+     * 获取当前频道的所有请求头
+     */
+    fun getAllHeaders(): Map<String, String> {
+        return allHeaders ?: emptyMap()
+    }
+
+    /**
+     * 检查是否有自定义UA
+     */
+    fun hasCustomUserAgent(): Boolean {
+        return userAgent != DEFAULT_USER_AGENT
+    }
 
     @OptIn(UnstableApi::class)
     fun getMediaItem(): MediaItem? {
@@ -132,9 +156,17 @@ class TVModel(var tv: TV) : ViewModel() {
             val scheme = uri.scheme ?: return@let null
 
             val okHttpDataSource = OkHttpDataSource.Factory(HttpClient.okHttpClient)
-            tv.headers?.let { i ->
-                okHttpDataSource.setDefaultRequestProperties(i)
-                i.forEach { (key, value) ->
+
+            // 处理headers，包括UA
+            tv.headers?.let { headers ->
+                // 保存所有headers供外部使用
+                allHeaders = headers
+
+                // 设置默认请求属性
+                okHttpDataSource.setDefaultRequestProperties(headers)
+
+                // 提取User-Agent
+                headers.forEach { (key, value) ->
                     if (key.equals("user-agent", ignoreCase = true)) {
                         userAgent = value
                         return@forEach
@@ -262,5 +294,6 @@ class TVModel(var tv: TV) : ViewModel() {
 
     companion object {
         private const val TAG = "TVModel"
+        const val DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 }

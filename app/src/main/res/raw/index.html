@@ -115,6 +115,16 @@
                 background-color: grey;
             }
 
+            .history-ua {
+                flex: 0 0 80px;
+                margin-right: 0.5rem;
+                background-color: grey;
+                color: #EEEEEE;
+                text-align: center;
+                border: none;
+                border-radius: 4px;
+            }
+
             .message-box {
                 position: fixed;
                 top: 20px;
@@ -142,10 +152,11 @@
 
         <div class="item">
             <label for="uri-name" id="uri-label">視頻源地址</label>
-            <div class="container">
-                <input type="text" id="uri-name" placeholder="名称（如：安徽移动单播）"/>
-                <input type="text" id="uri" placeholder="https://..."/>
-                <input type="button" id="confirm-uri" value="新增" class="add"/>
+            <div class="container" style="flex-wrap: wrap; gap: 0.5rem;">
+                <input type="text" id="uri-name" placeholder="名称（如：安徽移动单播）" style="flex: 0 0 calc(30% - 0.5rem);"/>
+                <input type="text" id="uri" placeholder="https://..." style="flex: 1;"/>
+                <input type="text" id="uri-ua" placeholder="User-Agent (可选)" style="flex: 0 0 100%; margin-top: 0.5rem;"/>
+                <input type="button" id="confirm-uri" value="新增" class="add" style="flex: 0 0 4rem;"/>
             </div>
             <div id="sources-new"></div>
             <div id="source"></div>
@@ -209,6 +220,7 @@
                 confirm: '確認',
                 remove: '刪除',
                 add: '新增',
+                uaPlaceholder: 'User-Agent (可選)',
             },
             SIMPLIFIED_CHINESE: {
                 appName: '星辉直播',
@@ -221,6 +233,7 @@
                 confirm: '确认',
                 remove: '删除',
                 add: '新增',
+                uaPlaceholder: 'User-Agent (可选)',
             }
         };
         const t = (key) => lang['TRADITIONAL_CHINESE'][key];
@@ -270,56 +283,60 @@
             });
         })
 
-document.querySelector('#confirm-uri').onclick = () => {
-    let uri = document.querySelector('#uri').value.trim();
-    let name = document.querySelector('#uri-name').value.trim();
+        document.querySelector('#confirm-uri').onclick = () => {
+            let uri = document.querySelector('#uri').value.trim();
+            let name = document.querySelector('#uri-name').value.trim();
+            let ua = document.querySelector('#uri-ua').value.trim();  // 获取UA
 
-    // 强制要求填写名称
-    if (!name) {
-        alert('請輸入視頻源名稱');
-        document.querySelector('#uri-name').focus();
-        return;
-    }
+            // 强制要求填写名称
+            if (!name) {
+                alert('請輸入視頻源名稱');
+                document.querySelector('#uri-name').focus();
+                return;
+            }
 
-    if (!uri) {
-        alert('請輸入視頻源地址');
-        return;
-    }
-    if (!uri.startsWith('http')) {
-        uri = 'http://' + uri;
-    }
-    if (!isValidUrl(uri)) {
-        alert(`無效的地址${uri}`);
-        return;
-    }
+            if (!uri) {
+                alert('請輸入視頻源地址');
+                return;
+            }
+            if (!uri.startsWith('http')) {
+                uri = 'http://' + uri;
+            }
+            if (!isValidUrl(uri)) {
+                alert(`無效的地址${uri}`);
+                return;
+            }
 
-    const uuid = uuidV4()
-    save('/api/import-uri', JSON.stringify({
-        id: uuid,
-        uri: uri,
-        name: name
-    }))
-    showMessage('已確認', 3000);
+            const uuid = uuidV4()
+            save('/api/import-uri', JSON.stringify({
+                id: uuid,
+                uri: uri,
+                name: name,
+                ua: ua  // 添加UA
+            }))
+            showMessage('已確認', 3000);
 
-    let htmlString = `<div class="container history">
-        <input type="text" readonly value="${name}" class="history-name" title="${uri}"/>
-        <input type="text" readonly value="●●●●●●●●●●" class="history-uri" title="${uri}"/>
-        <input type="button" value="${t('remove')}" class="remove" data-source-id="${uuid}" data-uri="${uri}" data-name="${name}"/>
-    </div>`;
-    let doc = new DOMParser().parseFromString(htmlString, 'text/html');
-    const firstChild = source.firstChild;
-    if (firstChild) {
-        source.insertBefore(doc.body.firstChild, firstChild);
-    } else {
-        source.appendChild(doc.body.firstChild);
-    }
+            let htmlString = `<div class="container history">
+                <input type="text" readonly value="${name}" class="history-name" title="${uri}"/>
+                <input type="text" readonly value="●●●●●●●●●●" class="history-uri" title="${uri}"/>
+                <input type="text" readonly value="${ua ? 'UA已设置' : '无UA'}" class="history-ua" title="${ua}"/>
+                <input type="button" value="${t('remove')}" class="remove" data-source-id="${uuid}" data-uri="${uri}" data-name="${name}" data-ua="${ua}"/>
+            </div>`;
+            let doc = new DOMParser().parseFromString(htmlString, 'text/html');
+            const firstChild = source.firstChild;
+            if (firstChild) {
+                source.insertBefore(doc.body.firstChild, firstChild);
+            } else {
+                source.appendChild(doc.body.firstChild);
+            }
 
-    // 新增：清空输入框
-    document.querySelector('#uri-name').value = '';
-    document.querySelector('#uri').value = '';
+            // 清空输入框
+            document.querySelector('#uri-name').value = '';
+            document.querySelector('#uri').value = '';
+            document.querySelector('#uri-ua').value = '';  // 清空UA
 
-    handleRemove()
-}
+            handleRemove()
+        }
 
         document.querySelector('#confirm-channel').onclick = () => {
             const channel = document.querySelector('#channel').value.trim();
@@ -391,13 +408,15 @@ document.querySelector('#confirm-uri').onclick = () => {
                 add.onclick = () => {
                     const uri = add.dataset.uri.trim();
                     const name = add.dataset.name.trim();
-                    console.log('uri', uri, 'name', name);
+                    const ua = add.dataset.ua || '';  // 获取UA
+                    console.log('uri', uri, 'name', name, 'ua', ua);
 
                     const uuid = uuidV4();
                     save('/api/import-uri', JSON.stringify({
                         id: uuid,
                         uri: uri,
-                        name: name
+                        name: name,  // 添加逗号
+                        ua: ua
                     }));
 
                     add.parentElement.remove();
@@ -405,7 +424,8 @@ document.querySelector('#confirm-uri').onclick = () => {
                     let htmlString = `<div class="container history">
                         <input type="text" readonly value="${name}" class="history-name" title="${uri}"/>
                         <input type="text" readonly value="●●●●●●●●●●" class="history-uri" title="${uri}"/>
-                        <input type="button" value="${t('remove')}" class="remove" data-source-id="${uuid}" data-uri="${uri}" data-name="${name}"/>
+                        <input type="text" readonly value="${ua ? 'UA已设置' : '无UA'}" class="history-ua" title="${ua}"/>
+                        <input type="button" value="${t('remove')}" class="remove" data-source-id="${uuid}" data-uri="${uri}" data-name="${name}" data-ua="${ua}"/>
                     </div>`;
                     let doc = new DOMParser().parseFromString(htmlString, 'text/html');
                     const firstChild = source.firstChild;
@@ -419,6 +439,7 @@ document.querySelector('#confirm-uri').onclick = () => {
 
                     document.querySelector('#uri').value = '';
                     document.querySelector('#uri-name').value = '';
+                    document.querySelector('#uri-ua').value = '';  // 清空UA
                 }
             })
         }
@@ -449,10 +470,12 @@ document.querySelector('#confirm-uri').onclick = () => {
 
             json.history.forEach(v => {
                 let name = v.name || '未命名';
+                let ua = v.ua || '';  // 获取UA
                 let htmlString = `<div class="container history">
                     <input type="text" readonly value="${name}" class="history-name" title="${v.uri}"/>
                     <input type="text" readonly value="●●●●●●●●●●" class="history-uri" title="${v.uri}"/>
-                    <input type="button" value="${t('remove')}" class="remove" data-source-id="${v.id}" data-uri="${v.uri}" data-name="${name}"/>
+                    <input type="text" readonly value="${ua ? 'UA已设置' : '无UA'}" class="history-ua" title="${ua}"/>
+                    <input type="button" value="${t('remove')}" class="remove" data-source-id="${v.id}" data-uri="${v.uri}" data-name="${name}" data-ua="${ua}"/>
                 </div>`;
                 let doc = new DOMParser().parseFromString(htmlString, 'text/html');
                 source.appendChild(doc.body.firstChild);
@@ -487,7 +510,8 @@ document.querySelector('#confirm-uri').onclick = () => {
                 let htmlString = `<div class="container history">
                     <input type="text" readonly value="${name}" class="history-name" style="background-color: darkslategray;" title="${uri}"/>
                     <input type="text" readonly value="●●●●●●●●●●" class="history-uri" style="background-color: darkslategray;" title="${uri}"/>
-                    <input type="button" value="${t('add')}" class="add new-source" data-uri="${uri}" data-name="${name}"/>
+                    <input type="text" readonly value="无UA" class="history-ua" style="background-color: darkslategray;" title="点击添加时可设置UA"/>
+                    <input type="button" value="${t('add')}" class="add new-source" data-uri="${uri}" data-name="${name}" data-ua=""/>
                 </div>`;
                 let doc = new DOMParser().parseFromString(htmlString, 'text/html');
                 sourcesNew.appendChild(doc.body.firstChild);
