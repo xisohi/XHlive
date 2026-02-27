@@ -2,6 +2,7 @@ package com.lizongying.mytv0.models
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -150,6 +151,11 @@ class TVModel(var tv: TV) : ViewModel() {
 
     @OptIn(UnstableApi::class)
     fun getMediaItem(): MediaItem? {
+        // 添加调试日志
+        Log.i(TAG, "=== getMediaItem for ${tv.title} ===")
+        Log.i(TAG, "tv.headers: ${tv.headers}")
+        Log.i(TAG, "tv.uris: ${tv.uris}")
+
         _mediaItem = getVideoUrl()?.let {
             val uri = Uri.parse(it) ?: return@let null
             val path = uri.path ?: return@let null
@@ -162,6 +168,12 @@ class TVModel(var tv: TV) : ViewModel() {
                 // 保存所有headers供外部使用
                 allHeaders = headers
 
+                // 调试：打印headers
+                Log.i(TAG, "Setting headers for ${tv.title}:")
+                headers.forEach { (key, value) ->
+                    Log.i(TAG, "  $key: $value")
+                }
+
                 // 设置默认请求属性
                 okHttpDataSource.setDefaultRequestProperties(headers)
 
@@ -169,13 +181,18 @@ class TVModel(var tv: TV) : ViewModel() {
                 headers.forEach { (key, value) ->
                     if (key.equals("user-agent", ignoreCase = true)) {
                         userAgent = value
+                        Log.i(TAG, "✅ Found User-Agent for ${tv.title}: $value")
                         return@forEach
                     }
                 }
+            } ?: run {
+                Log.i(TAG, "❌ No headers found for ${tv.title}, using default UA: $userAgent")
             }
 
-            _httpDataSource = okHttpDataSource
+            Log.i(TAG, "Final userAgent for ${tv.title}: $userAgent")
+            Log.i(TAG, "hasCustomUserAgent: ${hasCustomUserAgent()}")
 
+            _httpDataSource = okHttpDataSource
             sourceTypeList = if (path.lowercase().endsWith(".m3u8")) {
                 listOf(SourceType.HLS)
             } else if (path.lowercase().endsWith(".mpd")) {

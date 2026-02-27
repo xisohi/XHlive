@@ -191,6 +191,7 @@ class PlayerFragment : Fragment() {
         Log.i(TAG, "准备播放: ${tvModel.tv.title}")
         Log.i(TAG, "视频地址: ${tvModel.getVideoUrl()}")
         Log.i(TAG, "使用自定义UA: $hasCustomUA")
+        Log.i(TAG, "当前UA: $ua")  // 确保这里打印的UA是你设置的
         if (hasCustomUA) {
             Log.i(TAG, "UA: $ua")
         }

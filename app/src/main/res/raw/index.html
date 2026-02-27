@@ -154,8 +154,18 @@
             <label for="uri-name" id="uri-label">視頻源地址</label>
             <div class="container" style="flex-wrap: wrap; gap: 0.5rem;">
                 <input type="text" id="uri-name" placeholder="名称（如：安徽移动单播）" style="flex: 0 0 calc(30% - 0.5rem);"/>
-                <input type="text" id="uri" placeholder="https://..." style="flex: 1;"/>
-                <input type="text" id="uri-ua" placeholder="User-Agent (可选)" style="flex: 0 0 100%; margin-top: 0.5rem;"/>
+                <input type="text" id="uri" placeholder="https://... (完整地址，包含所有参数)" style="flex: 1;"/>
+                <div style="flex: 0 0 100%; display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+                    <select id="ua-preset" style="flex: 0 0 30%; height: 2.6rem; background-color: #fff; color: #1a1a1a; border-radius: 4px;">
+                        <option value="">选择常用UA...</option>
+                        <option value="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36">Windows Chrome</option>
+                        <option value="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1">iPhone Safari</option>
+                        <option value="Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36">Android Chrome</option>
+                        <option value="Dalvik/2.1.0 (Linux; U; Android 7.1.2; MXQ Build/NHG47L)">Android TV Box</option>
+                        <option value="okHttp/Mod-1.5.0.0">okHttp/Mod-1.5.0.0</option>
+                    </select>
+                    <input type="text" id="uri-ua" placeholder="或自定义User-Agent" style="flex: 1;"/>
+                </div>
                 <input type="button" id="confirm-uri" value="新增" class="add" style="flex: 0 0 4rem;"/>
             </div>
             <div id="sources-new"></div>
@@ -251,6 +261,13 @@
             i => i.value = t('add')
         );
 
+        // 添加UA预设选择功能
+        document.getElementById('ua-preset').addEventListener('change', function(e) {
+            if (this.value) {
+                document.getElementById('uri-ua').value = this.value;
+            }
+        });
+
         const source = document.querySelector('#source');
 
         const uploadFile = document.querySelector('#upload-file');
@@ -306,6 +323,10 @@
                 alert(`無效的地址${uri}`);
                 return;
             }
+
+            // 调试：打印完整的URI
+            console.log('Adding source with URI:', uri);
+            console.log('URI length:', uri.length);
 
             const uuid = uuidV4()
             save('/api/import-uri', JSON.stringify({
@@ -409,13 +430,14 @@
                     const uri = add.dataset.uri.trim();
                     const name = add.dataset.name.trim();
                     const ua = add.dataset.ua || '';  // 获取UA
-                    console.log('uri', uri, 'name', name, 'ua', ua);
+                    console.log('Adding from list - uri:', uri, 'name:', name, 'ua:', ua);
+                    console.log('URI length:', uri.length);
 
                     const uuid = uuidV4();
                     save('/api/import-uri', JSON.stringify({
                         id: uuid,
                         uri: uri,
-                        name: name,  // 添加逗号
+                        name: name,
                         ua: ua
                     }));
 
@@ -462,7 +484,7 @@
         (async () => {
             const response = await fetch('/api/settings');
             const json = await response.json();
-            console.log(json);
+            console.log('Settings:', json);
             document.querySelector('#channel').value = json.channelDefault;
             document.querySelector('#uri').value = '';  // 改为清空
             document.querySelector('#epg').value = json.epg;
@@ -471,6 +493,7 @@
             json.history.forEach(v => {
                 let name = v.name || '未命名';
                 let ua = v.ua || '';  // 获取UA
+                console.log('History item:', name, v.uri, 'length:', v.uri.length);
                 let htmlString = `<div class="container history">
                     <input type="text" readonly value="${name}" class="history-name" title="${v.uri}"/>
                     <input type="text" readonly value="●●●●●●●●●●" class="history-uri" title="${v.uri}"/>
@@ -485,28 +508,47 @@
 
             const sources = await fetch('/api/sources');
             const sourcesText = await sources.text();
-            console.log(sourcesText);
+            console.log('Raw sources text:', sourcesText);
 
             const histories = json.history.map(v => v.uri)
             const sourcesNew = document.querySelector('#sources-new');
 
+            // 按行分割，保留完整URL（包括参数）
             sourcesText.trim().split("\n").forEach((line) => {
                 if (!line.trim()) return;
 
+                // 调试：打印每一行
+                console.log('Processing line:', line);
+
                 let name, uri;
+                // 找到第一个逗号的位置
                 const commaIndex = line.indexOf(',');
 
-                if (commaIndex > 0 && !line.substring(0, commaIndex).includes('http')) {
+                if (commaIndex > 0) {
+                    // 提取名称（逗号前的内容）
                     name = line.substring(0, commaIndex).trim();
+                    // 提取完整的URL（逗号后的所有内容，包括所有参数）
                     uri = line.substring(commaIndex + 1).trim();
+
+                    // 调试：打印解析结果
+                    console.log('Parsed - Name:', name);
+                    console.log('Parsed - URI:', uri);
+                    console.log('URI length:', uri.length);
                 } else {
+                    // 如果没有逗号，整行作为URL
                     uri = line.trim();
                     const parts = uri.split('/');
                     name = parts[parts.length - 1]?.replace('.txt', '') || '未命名';
+                    console.log('No comma - URI:', uri, 'Name:', name);
                 }
 
-                if (histories.includes(uri)) return;
+                // 检查是否已在历史记录中
+                if (histories.includes(uri)) {
+                    console.log('URI already in history, skipping:', uri);
+                    return;
+                }
 
+                // 创建可添加的源列表项
                 let htmlString = `<div class="container history">
                     <input type="text" readonly value="${name}" class="history-name" style="background-color: darkslategray;" title="${uri}"/>
                     <input type="text" readonly value="●●●●●●●●●●" class="history-uri" style="background-color: darkslategray;" title="${uri}"/>

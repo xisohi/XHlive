@@ -1,4 +1,5 @@
 import android.content.Context
+import android.content.SharedPreferences
 import android.net.Uri
 import android.util.Log
 import androidx.core.net.toFile
@@ -36,7 +37,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
 
-
 class MainViewModel : ViewModel() {
     private var timeFormat = if (SP.displaySeconds) "HH:mm:ss" else "HH:mm"
 
@@ -57,6 +57,9 @@ class MainViewModel : ViewModel() {
     private val _channelsOk = MutableLiveData<Boolean>()
     val channelsOk: LiveData<Boolean>
         get() = _channelsOk
+
+    // 添加一个Map来缓存URL和UA的对应关系
+    private val uaCache = mutableMapOf<String, String>()
 
     fun setDisplaySeconds(displaySeconds: Boolean) {
         timeFormat = if (displaySeconds) "HH:mm:ss" else "HH:mm"
@@ -254,7 +257,6 @@ class MainViewModel : ViewModel() {
                         Log.e(TAG, "EPG $a ${response.codeAlias()}")
                     }
                 } catch (e: Exception) {
-//                    Log.e(TAG, "EPG $a error", e)
                     Log.e(TAG, "EPG $a error")
                 }
             }
@@ -280,6 +282,7 @@ class MainViewModel : ViewModel() {
                     val requestBuilder = okhttp3.Request.Builder().url(a)
                     if (ua.isNotEmpty()) {
                         requestBuilder.addHeader("User-Agent", ua)
+                        Log.i(TAG, "Using UA for request: $ua")
                     }
                     val request = requestBuilder.build()
 
@@ -288,7 +291,7 @@ class MainViewModel : ViewModel() {
                     if (response.isSuccessful) {
                         val str = response.bodyAlias()?.string() ?: ""
                         withContext(Dispatchers.Main) {
-                            tryStr2Channels(str, null, b, id)
+                            tryStr2Channels(str, null, b, id, ua)
                         }
                         err = 0
                         shouldBreak = true
@@ -332,6 +335,11 @@ class MainViewModel : ViewModel() {
     }
 
     fun importFromUri(uri: Uri, id: String = "", ua: String = "") {
+        Log.i(TAG, "=== importFromUri ===")
+        Log.i(TAG, "uri: $uri")
+        Log.i(TAG, "id: $id")
+        Log.i(TAG, "ua: '$ua'")  // 注意这里用引号括起来，方便看到空字符串
+
         if (uri.scheme == "file") {
             val file = uri.toFile()
             Log.i(TAG, "file $file")
@@ -342,18 +350,70 @@ class MainViewModel : ViewModel() {
                 return
             }
 
-            tryStr2Channels(str, file, uri.toString(), id)
+            tryStr2Channels(str, file, uri.toString(), id, ua)
         } else {
             viewModelScope.launch {
-                importFromUrl(uri.toString(), id, ua)  // 传递UA
+                importFromUrl(uri.toString(), id, ua)
             }
         }
     }
 
+    /**
+     * 保存URL和UA的对应关系到SharedPreferences
+     */
+    private fun saveUAForUrl(url: String, ua: String) {
+        Log.i(TAG, "=== saveUAForUrl ===")
+        Log.i(TAG, "url: $url")
+        Log.i(TAG, "ua: '$ua'")
+
+        if (ua.isNotEmpty()) {
+            // 保存到缓存
+            uaCache[url] = ua
+
+            // 保存到SharedPreferences
+            val prefs = SP.getSharedPreferences()
+            prefs.edit().putString("ua_${url.hashCode()}", ua).apply()
+            Log.i(TAG, "✅ Saved UA for $url: $ua")
+        } else {
+            Log.w(TAG, "⚠️ Attempted to save empty UA for $url")
+        }
+    }
+
+    /**
+     * 获取URL对应的UA
+     */
+    fun getUAForUrl(url: String): String {
+        Log.i(TAG, "=== getUAForUrl ===")
+        Log.i(TAG, "Looking up UA for url: $url")
+
+        // 先从缓存获取
+        uaCache[url]?.let {
+            Log.i(TAG, "✅ Found in cache: '$it'")
+            return it
+        }
+
+        // 缓存没有，从SharedPreferences获取
+        val prefs = SP.getSharedPreferences()
+        val key = "ua_${url.hashCode()}"
+        val ua = prefs.getString(key, "") ?: ""
+
+        Log.i(TAG, "Looking in SharedPreferences with key: $key")
+
+        if (ua.isNotEmpty()) {
+            uaCache[url] = ua
+            Log.i(TAG, "✅ Found in prefs: '$ua'")
+        } else {
+            Log.w(TAG, "❌ No UA found for key: $key")
+        }
+
+        return ua
+    }
+
     fun tryStr2Channels(str: String, file: File?, url: String, id: String = "", ua: String = "") {
         try {
-            if (str2Channels(str)) {
-                Log.i(TAG, "write to cacheFile $cacheFile $str")
+            // 直接将ua参数传递给str2Channels
+            if (str2Channels(str, url, ua)) {  // 添加ua参数
+                Log.i(TAG, "write to cacheFile $cacheFile")
                 cacheFile!!.writeText(str)
                 Log.i(TAG, "cacheFile ${getCache()}")
                 cacheChannels = str
@@ -362,9 +422,14 @@ class MainViewModel : ViewModel() {
                     val source = Source(
                         id = id,
                         uri = url,
-                        ua = ua  // 保存UA
+                        ua = ua
                     )
                     sources.addSource(source)
+
+                    // 保存UA供以后使用
+                    if (ua.isNotEmpty()) {
+                        saveUAForUrl(url, ua)
+                    }
                 }
                 _channelsOk.value = true
                 R.string.channel_import_success.showToast()
@@ -380,7 +445,8 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    private fun str2Channels(str: String): Boolean {
+    // 修改 str2Channels 方法，添加 directUA 参数
+    private fun str2Channels(str: String, sourceUrl: String = "", directUA: String = ""): Boolean {
         var string = str
         if (initialized && string == cacheChannels) {
             Log.w(TAG, "same channels")
@@ -404,8 +470,8 @@ class MainViewModel : ViewModel() {
 
         val list: List<TV>
 
-        when (string[0]) {
-            '[' -> {
+        when {
+            string.startsWith('[') -> {
                 try {
                     list = gson.fromJson(string, typeTvList)
                     Log.i(TAG, "导入频道 ${list.size} $list")
@@ -415,7 +481,7 @@ class MainViewModel : ViewModel() {
                 }
             }
 
-            '#' -> {
+            string.startsWith('#') -> {
                 val lines = string.lines()
                 val nameRegex = Regex("""tvg-name="([^"]+)"""")
                 val logRegex = Regex("""tvg-logo="([^"]+)"""")
@@ -475,23 +541,24 @@ class MainViewModel : ViewModel() {
                 if (key.isNotEmpty()) {
                     tvMap[key] = if (!tvMap.containsKey(key)) listOf(tv) else tvMap[key]!! + tv
                 }
-                for ((_, tv) in tvMap) {
-                    val uris = tv.map { t -> t.uris }.flatten()
-                    val t0 = tv[0]
+                for ((_, tvList) in tvMap) {
+                    val uris = tvList.map { t -> t.uris }.flatten()
+                    val t0 = tvList[0]
+                    // 根据TV类的构造函数修正
                     val t1 = TV(
-                        -1,
-                        t0.name,
-                        t0.title,
-                        "",
-                        t0.logo,
-                        "",
-                        uris,
-                        0,
-                        t0.headers,  // 这里保存了headers，包含UA信息
-                        t0.group,
-                        SourceType.UNKNOWN,
-                        t0.number,
-                        emptyList(),
+                        id = -1,
+                        name = t0.name,
+                        title = t0.title,
+                        description = t0.description,
+                        logo = t0.logo,
+                        image = t0.image,
+                        uris = uris,
+                        videoIndex = t0.videoIndex,
+                        headers = t0.headers,
+                        group = t0.group,
+                        sourceType = SourceType.UNKNOWN,
+                        number = t0.number,
+                        child = emptyList()
                     )
                     l.add(t1)
                 }
@@ -503,8 +570,22 @@ class MainViewModel : ViewModel() {
                 // TXT格式处理
                 val lines = string.lines()
                 var group = ""
-                val l = mutableListOf<TV>()
-                val tvMap = mutableMapOf<String, List<String>>()
+
+                // 修改为存储：key -> Pair(分组, List<Pair<URL, UA>>)
+                val tvMap = mutableMapOf<String, MutableList<Pair<String, String>>>()
+
+                // 🔥 优先使用直接传入的UA
+                val sourceUA = if (directUA.isNotEmpty()) {
+                    Log.i(TAG, "📢 Using direct UA from parameter: '$directUA'")
+                    directUA
+                } else if (sourceUrl.isNotEmpty()) {
+                    getUAForUrl(sourceUrl)
+                } else {
+                    ""
+                }
+
+                Log.i(TAG, "Final sourceUA: '$sourceUA'")
+
                 for (line in lines) {
                     val trimmedLine = line.trim()
                     if (trimmedLine.isNotEmpty()) {
@@ -514,42 +595,68 @@ class MainViewModel : ViewModel() {
                             if (!trimmedLine.contains(",")) {
                                 continue
                             }
-                            val arr = trimmedLine.split(',').map { it.trim() }
-                            val title = arr.first().trim()
-                            val uris = arr.drop(1)
+                            // 只分割第一个逗号，保留后面的完整URL（包括所有参数）
+                            val firstCommaIndex = trimmedLine.indexOf(',')
+                            val title = trimmedLine.substring(0, firstCommaIndex).trim()
+                            val fullUrl = trimmedLine.substring(firstCommaIndex + 1).trim()
 
                             val key = group + title
                             if (!tvMap.containsKey(key)) {
-                                tvMap[key] = listOf(group)
+                                // 第一个元素存储分组信息
+                                tvMap[key] = mutableListOf(Pair(group, sourceUA))
                             }
-                            tvMap[key] = tvMap[key]!! + uris
+
+                            // 添加URL，并关联UA
+                            tvMap[key]?.add(Pair(fullUrl, sourceUA))
+
+                            Log.d(TAG, "TXT parse - Group: $group, Title: $title, URL: ${fullUrl.take(50)}..., UA: $sourceUA")
                         }
                     }
                 }
-                for ((title, uris) in tvMap) {
-                    val channelGroup = uris.first();
-                    uris.drop(1);
+
+                val l = mutableListOf<TV>()
+                for ((key, items) in tvMap) {
+                    if (items.size < 2) continue  // 至少需要分组信息和至少一个URL
+
+                    val channelGroup = items[0].first
+                    val channelUA = items[0].second  // 获取这个频道的UA
+
+                    // 提取所有URL（跳过第一个分组信息）
+                    val channelUris = items.drop(1).map { it.first }
+
+                    // 创建headers，如果有UA的话
+                    val headers = if (channelUA.isNotEmpty()) {
+                        Log.i(TAG, "🎯 Adding UA to channel $key: $channelUA")
+                        mapOf("User-Agent" to channelUA)
+                    } else {
+                        emptyMap()
+                    }
+
+                    // 根据TV类的构造函数修正
                     val tv = TV(
-                        -1,
-                        "",
-                        title.removePrefix(channelGroup),
-                        "",
-                        "",
-                        "",
-                        uris,
-                        0,
-                        emptyMap(),  // TXT格式不支持headers
-                        channelGroup,
-                        SourceType.UNKNOWN,
-                        -1,
-                        emptyList(),
+                        id = -1,
+                        name = "",
+                        title = key.removePrefix(channelGroup),
+                        description = null,
+                        logo = "",
+                        image = null,
+                        uris = channelUris,
+                        videoIndex = 0,
+                        headers = headers,
+                        group = channelGroup,
+                        sourceType = SourceType.UNKNOWN,
+                        number = -1,
+                        child = emptyList()
                     )
 
                     l.add(tv)
                 }
                 list = l
-                Log.d(TAG, "导入频道 $list")
-                Log.i(TAG, "导入频道 ${list.size}")
+                Log.i(TAG, "导入频道 ${list.size} 个")
+                list.forEachIndexed { index, tv ->
+                    val ua = tv.headers?.get("User-Agent") ?: "无"
+                    Log.d(TAG, "Channel $index: ${tv.title}, UA: $ua")
+                }
             }
         }
 

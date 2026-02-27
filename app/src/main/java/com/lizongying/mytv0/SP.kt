@@ -204,7 +204,9 @@ object SP {
 
         sp.edit().putStringSet(KEY_LIKE, stringSet).apply()
     }
-
+    fun getSharedPreferences(): SharedPreferences {
+        return sp
+    }
     fun deleteLike() {
         sp.edit().remove(KEY_LIKE).apply()
     }

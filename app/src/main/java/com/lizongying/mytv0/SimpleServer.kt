@@ -166,20 +166,25 @@ class SimpleServer(private val context: Context, private val viewModel: MainView
         try {
             readBody(session)?.let {
                 val req = gson.fromJson(it, ReqSourceAdd::class.java)
+                // 添加详细日志
+                Log.i(TAG, "========== handleImportUri ==========")
+                Log.i(TAG, "Raw request body: $it")
+                Log.i(TAG, "Parsed req - id: ${req.id}")
+                Log.i(TAG, "Parsed req - uri: ${req.uri}")
+                Log.i(TAG, "Parsed req - name: ${req.name}")
+                Log.i(TAG, "Parsed req - ua: '${req.ua}'")  // 注意用引号括起来，方便看到空字符串
+
                 val uri = Uri.parse(req.uri)
 
-                // 创建 Source 时传入 name
                 val source = Source(
                     uri = req.uri,
-                    name = req.name,  // 传入前端提交的名称
-                    ua = req.ua  // 添加UA
+                    name = req.name,
+                    ua = req.ua
                 )
 
                 handler.post {
-                    // 先添加到 sources 列表（带名称）
                     viewModel.sources.addSource(source)
-                    // 然后导入频道
-                    viewModel.importFromUri(uri, req.id, req.ua)  // 传递UA
+                    viewModel.importFromUri(uri, req.id, req.ua)
                 }
             }
         } catch (e: Exception) {
