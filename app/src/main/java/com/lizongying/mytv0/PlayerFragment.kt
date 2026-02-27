@@ -144,10 +144,6 @@ class PlayerFragment : Fragment() {
 
                 val tv = tvModel!!
 
-                // 🆕 播放错误时打印UA信息（便于调试）
-                Log.e(TAG, "播放错误: ${tv.tv.title}, 使用的UA: ${tv.getUserAgent()}")
-                Log.e(TAG, "错误信息: ${error.message}")
-
                 if (tv.retryTimes < tv.retryMaxTimes) {
                     var last = true
                     if (tv.getSourceTypeDefault() == SourceType.UNKNOWN) {
