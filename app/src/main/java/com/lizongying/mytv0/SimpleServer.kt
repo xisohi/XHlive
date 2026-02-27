@@ -303,9 +303,22 @@ class SimpleServer(private val context: Context, private val viewModel: MainView
     }
 
     private fun readBody(session: IHTTPSession): String? {
-        val map = HashMap<String, String>()
-        session.parseBody(map)
-        return map["postData"]
+        val contentLength = session.headers["content-length"]?.toIntOrNull() ?: 0
+        if (contentLength <= 0) return null
+
+        return try {
+            val buffer = ByteArray(contentLength)
+            var read = 0
+            while (read < contentLength) {
+                val r = session.inputStream.read(buffer, read, contentLength - read)
+                if (r == -1) break
+                read += r
+            }
+            String(buffer, 0, read, StandardCharsets.UTF_8)
+        } catch (e: Exception) {
+            Log.e(TAG, "readBody error", e)
+            null
+        }
     }
 
     private fun handleStaticContent(): Response {
