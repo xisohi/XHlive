@@ -2,153 +2,440 @@
 <html lang="zh-Hant">
     <head>
         <meta charset="UTF-8">
-        <meta
-                name="viewport"
-                content="width=device-width, initial-scale=1.0">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
         <title>星輝直播</title>
         <style>
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+
             body {
-                height: 100vh;
+                min-height: 100vh;
                 margin: 0;
                 padding: 1rem;
                 background-color: #263238;
                 color: #EEEEEE;
+                font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
             }
 
             a {
                 color: #EEEEEE;
+                text-decoration: none;
             }
 
             hr {
-                margin-top: .5rem;
-                margin-bottom: .5rem;
+                margin: 1rem 0;
+                border: none;
+                height: 1px;
+                background: linear-gradient(90deg, transparent, #455A64, transparent);
             }
 
             label {
                 display: inline-block;
                 width: 100%;
-                margin-bottom: .5rem;
+                margin-bottom: 0.8rem;
+                font-weight: 500;
+                color: #B0BEC5;
+                letter-spacing: 0.5px;
+            }
+
+            input, textarea, button {
+                font-family: inherit;
             }
 
             input[type="file"] {
                 color: #EEEEEE;
                 cursor: pointer;
+                background: #37474F;
+                border: 1px solid #455A64;
+                border-radius: 8px;
+                padding: 0.6rem;
             }
 
             input, textarea {
                 color: #1a1a1a;
-                padding: .6rem;
+                padding: 0.6rem 1rem;
                 border: none;
-                border-radius: 4px;
-                transition: box-shadow 0.3s ease-in-out;
-                vertical-align: bottom;
+                border-radius: 8px;
+                transition: all 0.3s ease;
+                background: #ECEFF1;
+                font-size: 1rem;
             }
 
             input:focus, textarea:focus {
                 outline: none;
-                border-color: #66afe9;
-                box-shadow: 0 0 10px rgba(102, 175, 233, 0.6);
+                border-color: #009688;
+                box-shadow: 0 0 0 3px rgba(0, 150, 136, 0.3);
             }
 
             .container {
                 display: flex;
                 flex-direction: row;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                width: 100%;
             }
 
             input[type="text"], input[type="number"] {
                 flex: 1;
+                min-width: 120px;
+            }
+
+            input[type="text"], input[type="number"], input[type="file"], input[type="button"], button {
+                height: 2.8rem;
                 box-sizing: border-box;
             }
 
-            input[type="text"], input[type="number"], input[type="file"], input[type="button"] {
-                height: 2.6rem;
-            }
-
-            input[type="button"] {
-                margin-left: .6rem;
+            input[type="button"], button {
+                margin-left: 0;
                 cursor: pointer;
+                border: none;
+                border-radius: 8px;
+                font-weight: 600;
+                transition: all 0.2s;
+                white-space: nowrap;
+                padding: 0 1.2rem;
+                background: #009688;
+                color: white;
+                box-shadow: 0 2px 8px rgba(0, 150, 136, 0.3);
             }
 
-            /* 名称输入框样式 */
-            #uri-name {
-                flex: 0 0 30%;
-                margin-right: 0.5rem;
+            input[type="button"]:hover, button:hover {
+                background: #00796B;
+                transform: translateY(-1px);
+                box-shadow: 0 4px 12px rgba(0, 150, 136, 0.4);
             }
 
-            #uri {
-                flex: 1;
+            /* 源地址输入区域 - 网格布局 - 修复版 */
+            .input-grid {
+                display: grid;
+                gap: 0.75rem;
+                width: 100%;
+                margin-bottom: 1.5rem;
             }
 
-            #confirm-uri {
-                flex: 0 0 4rem;
-                margin-left: 0.5rem;
+            .input-field {
+                height: 2.8rem;
+                border-radius: 8px;
+                border: 1px solid #455A64;
+                background: #37474F;
+                color: #fff;
+                padding: 0 1rem;
+                font-size: 0.95rem;
+                width: 100%;
+                box-sizing: border-box;
             }
 
-            .source-grey {
-                background-color: grey;
-                color: #EEEEEE;
+            .input-field:focus {
+                border-color: #009688;
+                background: #2C3E50;
             }
 
-            .source-green {
-                background-color: darkslategray;
-                color: #EEEEEE;
+            .input-field::placeholder {
+                color: #90A4AE;
             }
 
+            .btn-add {
+                height: 2.8rem;
+                border-radius: 8px;
+                border: none;
+                background: linear-gradient(135deg, #009688 0%, #00796B 100%);
+                color: white;
+                font-weight: 600;
+                cursor: pointer;
+                font-size: 1rem;
+                transition: all 0.2s;
+                padding: 0 1.5rem;
+                white-space: nowrap;
+            }
+
+            /* PC端布局 (>=1024px) - 修复重叠问题 */
+            @media (min-width: 1024px) {
+                .input-grid {
+                    grid-template-columns: minmax(140px, 1.5fr) minmax(200px, 3fr) minmax(120px, 1.2fr) minmax(120px, 1.2fr) minmax(80px, 0.8fr);
+                    align-items: center;
+                }
+
+                .input-name { grid-column: 1; }
+                .input-uri { grid-column: 2; }
+                .input-ua { grid-column: 3; }
+                .input-referrer { grid-column: 4; }
+                .btn-add { grid-column: 5; }
+            }
+
+            /* 中等屏幕 (768px - 1023px) */
+            @media (min-width: 768px) and (max-width: 1023px) {
+                .input-grid {
+                    grid-template-columns: repeat(4, 1fr);
+                    grid-template-rows: auto auto;
+                }
+
+                .input-name { grid-column: 1 / 2; grid-row: 1; }
+                .input-uri { grid-column: 2 / 5; grid-row: 1; }
+                .input-ua { grid-column: 1 / 3; grid-row: 2; }
+                .input-referrer { grid-column: 3 / 5; grid-row: 2; }
+                .btn-add {
+                    grid-column: 1 / 5;
+                    grid-row: 3;
+                    width: 100%;
+                }
+            }
+
+            /* 手机端 (<768px) */
+            @media (max-width: 767px) {
+                body {
+                    padding: 0.8rem;
+                }
+
+                .input-grid {
+                    grid-template-columns: 1fr;
+                    gap: 0.6rem;
+                }
+
+                .input-field, .btn-add {
+                    width: 100%;
+                    font-size: 16px;
+                }
+
+                .btn-add {
+                    margin-top: 0.2rem;
+                }
+
+                .history {
+                    flex-direction: column !important;
+                    width: 100%;
+                    margin: 0.5rem 0;
+                    padding: 0.5rem;
+                    background: #2C3E50;
+                    border-radius: 8px;
+                    border: 1px solid #455A64;
+                }
+
+                .history > input[type="text"] {
+                    width: 100% !important;
+                    flex: none !important;
+                    margin: 0.2rem 0 !important;
+                    background: #37474F !important;
+                    color: #fff;
+                    padding: 0.6rem !important;
+                    border-radius: 6px;
+                }
+
+                .history-ua, .history-referrer {
+                    width: 100% !important;
+                    flex: none !important;
+                    margin: 0.2rem 0 !important;
+                    text-align: left !important;
+                    padding-left: 0.6rem !important;
+                }
+
+                .remove {
+                    width: 100%;
+                    margin: 0.2rem 0 0 0 !important;
+                    height: 2.6rem;
+                }
+
+                #sources-new .history {
+                    background: #1E2A32;
+                }
+
+                #sources-new .history input[type="text"] {
+                    background: #2C3E50 !important;
+                }
+
+                .item .container {
+                    flex-direction: column;
+                }
+
+                .item .container input[type="number"],
+                .item .container input[type="text"],
+                .item .container input[type="button"] {
+                    width: 100%;
+                    margin: 0.2rem 0;
+                }
+            }
+
+            /* 历史记录样式 */
             .history {
-                margin-top: 10px;
+                display: flex;
+                flex-direction: row;
+                align-items: center;
+                margin-top: 0.75rem;
+                width: 100%;
+                background: #2C3E50;
+                border-radius: 8px;
+                padding: 0.5rem;
+                border: 1px solid #455A64;
+                transition: all 0.2s;
+            }
+
+            .history:hover {
+                border-color: #009688;
+                background: #34495E;
             }
 
             .history > input[type="text"] {
                 color: #EEEEEE;
                 border: none;
+                background: transparent;
+                padding: 0.5rem;
+                height: auto;
+                font-size: 0.9rem;
+            }
+
+            .history > input[type="text"]:read-only {
+                background: transparent;
             }
 
             .history-name {
-                flex: 0 0 25%;
+                flex: 0 0 20%;
                 margin-right: 0.5rem;
-                background-color: grey;
+                font-weight: 500;
             }
 
             .history-uri {
-                flex: 0 0 35%;
+                flex: 0 0 30%;
                 margin-right: 0.5rem;
-                background-color: grey;
+                font-family: monospace;
+                font-size: 0.85rem;
+                color: #B0BEC5 !important;
             }
 
             .history-ua {
-                flex: 0 0 20%;
+                flex: 0 0 15%;
                 margin-right: 0.5rem;
-                background-color: grey;
-                color: #EEEEEE;
+                background: rgba(0, 150, 136, 0.15) !important;
+                color: #009688 !important;
+                border-radius: 20px;
                 text-align: center;
                 font-size: 0.8rem;
+                padding: 0.3rem 0.5rem !important;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
 
             .history-referrer {
-                flex: 0 0 20%;
+                flex: 0 0 15%;
                 margin-right: 0.5rem;
-                background-color: grey;
-                color: #EEEEEE;
+                background: rgba(255, 152, 0, 0.15) !important;
+                color: #FF9800 !important;
+                border-radius: 20px;
                 text-align: center;
                 font-size: 0.8rem;
+                padding: 0.3rem 0.5rem !important;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
 
+            .history-ua[value*="无UA"],
+            .history-referrer[value*="无Ref"] {
+                background: rgba(156, 39, 176, 0.1) !important;
+                color: #9C27B0 !important;
+            }
+
+            .remove {
+                flex: 0 0 60px;
+                background: #E91E63 !important;
+                margin-left: 0.5rem;
+                box-shadow: 0 2px 8px rgba(233, 30, 99, 0.3);
+            }
+
+            .remove:hover {
+                background: #C2185B !important;
+            }
+
+            .add {
+                background: #8BC34A !important;
+                box-shadow: 0 2px 8px rgba(139, 195, 74, 0.3);
+            }
+
+            .add:hover {
+                background: #7CB342 !important;
+            }
+
+            .confirm {
+                background: #FF9800 !important;
+                box-shadow: 0 2px 8px rgba(255, 152, 0, 0.3);
+            }
+
+            .confirm:hover {
+                background: #FB8C00 !important;
+            }
+
+            /* 消息提示 */
             .message-box {
                 position: fixed;
                 top: 20px;
                 right: 20px;
-                padding: 10px 20px;
-                background-color: #333;
+                padding: 12px 24px;
+                background: #2C3E50;
                 color: #fff;
-                border-radius: 5px;
+                border-radius: 8px;
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+                border-left: 4px solid #009688;
+                z-index: 1000;
                 opacity: 0;
-                transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
+                transition: all 0.3s ease;
                 transform: translateX(100%);
+                max-width: 300px;
+                backdrop-filter: blur(10px);
             }
 
             .message-box.show {
                 opacity: 1;
                 transform: translateX(0);
+            }
+
+            @media (max-width: 767px) {
+                .message-box {
+                    left: 20px;
+                    right: 20px;
+                    max-width: none;
+                    transform: translateY(-100%);
+                }
+                .message-box.show {
+                    transform: translateY(0);
+                }
+            }
+
+            /* 其他设置项的容器 */
+            .item {
+                margin: 1rem 0;
+            }
+
+            .item .container {
+                display: flex;
+                gap: 0.5rem;
+                align-items: center;
+            }
+
+            /* 标题样式 */
+            h1 {
+                font-size: 2rem;
+                margin-bottom: 0.5rem;
+                background: linear-gradient(135deg, #64B5F6, #4DB6AC);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+            }
+
+            h4 {
+                color: #B0BEC5;
+                font-weight: 400;
+                margin: 0.5rem 0;
+            }
+
+            h4 a {
+                color: #64B5F6;
+                text-decoration: underline;
+            }
+
+            #sources-new, #source {
+                width: 100%;
+                margin-top: 1rem;
             }
         </style>
         <base target="_blank">
@@ -166,139 +453,8 @@
                 <input type="text" id="uri" placeholder="🔗 视频源地址 https://..." class="input-field input-uri"/>
                 <input type="text" id="uri-ua" placeholder="🌐 User-Agent (可选)" class="input-field input-ua"/>
                 <input type="text" id="uri-referrer" placeholder="🔒 Referer 防盗链 (可选)" class="input-field input-referrer"/>
-                <input type="button" id="confirm-uri" value="➕ 新增" class="btn-add"/>
+                <button id="confirm-uri" class="btn-add">➕ 新增</button>
             </div>
-
-            <style>
-                /* 响应式网格布局 */
-                .input-grid {
-                    display: grid;
-                    gap: 0.6rem;
-                    width: 100%;
-                }
-
-                /* 基础输入框样式 */
-                .input-field {
-                    height: 2.8rem;
-                    border-radius: 8px;
-                    border: 1px solid #455A64;
-                    background: #37474F;
-                    color: #fff;
-                    padding: 0 1rem;
-                    font-size: 0.9rem;
-                    width: 100%;
-                    box-sizing: border-box;
-                    transition: all 0.2s;
-                }
-
-                .input-field:focus {
-                    outline: none;
-                    border-color: #009688;
-                    box-shadow: 0 0 0 3px rgba(0, 150, 136, 0.1);
-                }
-
-                .input-field::placeholder {
-                    color: #90A4AE;
-                }
-
-                /* 新增按钮样式 */
-                .btn-add {
-                    height: 2.8rem;
-                    border-radius: 8px;
-                    border: none;
-                    background: linear-gradient(135deg, #009688 0%, #00796B 100%);
-                    color: #fff;
-                    font-weight: 600;
-                    cursor: pointer;
-                    font-size: 0.9rem;
-                    box-shadow: 0 2px 8px rgba(0, 150, 136, 0.3);
-                    transition: all 0.2s;
-                    width: 100%;
-                }
-
-                .btn-add:hover {
-                    transform: translateY(-1px);
-                    box-shadow: 0 4px 12px rgba(0, 150, 136, 0.4);
-                }
-
-                .btn-add:active {
-                    transform: translateY(0);
-                }
-
-                /* PC端布局 (>=768px) - 两行 */
-                @media (min-width: 768px) {
-                    .input-grid {
-                        grid-template-columns: 1fr 2fr 1fr 1.5fr 80px;
-                        grid-template-rows: auto auto;
-                    }
-
-                    .input-name {
-                        grid-column: 1;
-                        grid-row: 1;
-                    }
-
-                    .input-uri {
-                        grid-column: 2 / 4;
-                        grid-row: 1;
-                    }
-
-                    .input-ua {
-                        grid-column: 1;
-                        grid-row: 2;
-                    }
-
-                    .input-referrer {
-                        grid-column: 2 / 4;
-                        grid-row: 2;
-                    }
-
-                    .btn-add {
-                        grid-column: 4 / 6;
-                        grid-row: 2;
-                        width: auto;
-                    }
-                }
-
-                /* 平板端 (480px-767px) - 简化两行 */
-                @media (min-width: 480px) and (max-width: 767px) {
-                    .input-grid {
-                        grid-template-columns: 1fr 1fr;
-                        grid-template-rows: auto auto auto;
-                    }
-
-                    .input-name { grid-column: 1; grid-row: 1; }
-                    .input-uri { grid-column: 2; grid-row: 1; }
-                    .input-ua { grid-column: 1; grid-row: 2; }
-                    .input-referrer { grid-column: 2; grid-row: 2; }
-                    .btn-add {
-                        grid-column: 1 / 3;
-                        grid-row: 3;
-                        width: 100%;
-                    }
-                }
-
-                /* 手机端 (<480px) - 垂直堆叠 */
-                @media (max-width: 479px) {
-                    .input-grid {
-                        grid-template-columns: 1fr;
-                        gap: 0.5rem;
-                    }
-
-                    .input-field, .btn-add {
-                        width: 100%;
-                    }
-
-                    .input-field {
-                        height: 2.6rem;
-                        font-size: 16px; /* 防止iOS缩放 */
-                    }
-
-                    .btn-add {
-                        height: 2.6rem;
-                        margin-top: 0.3rem;
-                    }
-                }
-            </style>
             <div id="sources-new"></div>
             <div id="source"></div>
         </div>
@@ -318,7 +474,7 @@
             <label for="channel" id="channel-label">默認播放頻道號，從1開始。0代表默認設置</label>
             <div class="container">
                 <input type="number" id="channel" min="0" max="99"/>
-                <input type="button" id="confirm-channel" value="確認" class="confirm"/>
+                <button id="confirm-channel" class="confirm">確認</button>
             </div>
         </div>
 
@@ -328,7 +484,7 @@
             <label for="epg" id="epg-label">EPG</label>
             <div class="container">
                 <input type="text" id="epg"/>
-                <input type="button" id="confirm-epg" value="確認" class="confirm"/>
+                <button id="confirm-epg" class="confirm">確認</button>
             </div>
         </div>
 
@@ -338,391 +494,378 @@
             <label for="proxy" id="proxy-label">代理地址</label>
             <div class="container">
                 <input type="text" id="proxy"/>
-                <input type="button" id="confirm-proxy" value="確認" placeholder="http://0.0.0.0:0" class="confirm"/>
+                <button id="confirm-proxy" class="confirm">確認</button>
             </div>
         </div>
 
         <hr/>
 
         <div id="messageBox" class="message-box"></div>
+        <div style="height: 20px"></div>
 
-        <div style="height: 100%"></div>
-    </body>
-    <script>
-        const lang = {
-            TRADITIONAL_CHINESE: {
-                appName: '星輝直播',
-                description: '視頻源可以设置為地址/文件其中之一',
-                uriLabel: '視頻源地址',
-                uploadFileLabel: '視頻源文件，選擇後會自動上傳保存',
-                channelLabel: '默認播放頻道，從1開始。0代表默认設置',
-                epgLabel: 'EPG',
-                proxyLabel: '代理地址',
-                confirm: '確認',
-                remove: '刪除',
-                add: '新增',
-                uaPlaceholder: 'User-Agent (可選)',
-            },
-            SIMPLIFIED_CHINESE: {
-                appName: '星辉直播',
-                description: '视频源可以设置为地址/文件其中之一',
-                uriLabel: '视频源地址',
-                uploadFileLabel: '视频源文件，选择后会自动上传保存',
-                channelLabel: '默认播放频道，从1开始。0代表默認设置',
-                epgLabel: 'EPG',
-                proxyLabel: '代理地址',
-                confirm: '确认',
-                remove: '删除',
-                add: '新增',
-                uaPlaceholder: 'User-Agent (可选)',
-            }
-        };
-        const t = (key) => lang['TRADITIONAL_CHINESE'][key];
-        document.querySelector('h1').innerText = t('appName');
-        document.querySelector('h4').innerText = t('description');
-        document.querySelector('#uri-label').innerText = t('uriLabel');
-        document.querySelector('#upload-file-label').innerText = t('uploadFileLabel');
-        document.querySelector('#channel-label').innerText = t('channelLabel');
-        document.querySelector('#epg-label').innerText = t('epgLabel');
-        document.querySelector('#proxy-label').innerText = t('proxyLabel');
-        document.querySelectorAll('.confirm').forEach(
-            i => i.value = t('confirm')
-        );
-        document.querySelectorAll('.add').forEach(
-            i => i.value = t('add')
-        );
-
-        const source = document.querySelector('#source');
-
-        const uploadFile = document.querySelector('#upload-file');
-
-        uploadFile.onchange = function (e) {
-            handleFiles(e.target.files)
-        }
-
-        const handleFiles = async function (files) {
-            for (let i = 0; i < files.length; i++) {
-                await read(files[i]);
-            }
-        }
-
-        const read = async (file) => {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                save('/api/import-text', e.target.result);
+        <script>
+            // [保持原有的 JavaScript 代码不变]
+            const lang = {
+                TRADITIONAL_CHINESE: {
+                    appName: '星輝直播',
+                    description: '視頻源可以设置為地址/文件其中之一',
+                    uriLabel: '視頻源地址',
+                    uploadFileLabel: '視頻源文件，選擇後會自動上傳保存',
+                    channelLabel: '默認播放頻道，從1開始。0代表默认設置',
+                    epgLabel: 'EPG',
+                    proxyLabel: '代理地址',
+                    confirm: '確認',
+                    remove: '刪除',
+                    add: '新增',
+                },
+                SIMPLIFIED_CHINESE: {
+                    appName: '星辉直播',
+                    description: '视频源可以设置为地址/文件其中之一',
+                    uriLabel: '视频源地址',
+                    uploadFileLabel: '视频源文件，选择后会自动上传保存',
+                    channelLabel: '默认播放频道，从1开始。0代表默認设置',
+                    epgLabel: 'EPG',
+                    proxyLabel: '代理地址',
+                    confirm: '确认',
+                    remove: '删除',
+                    add: '新增',
+                }
             };
-            reader.readAsText(file);
-        }
+            const t = (key) => lang['TRADITIONAL_CHINESE'][key];
+            document.querySelector('h1').innerText = t('appName');
+            document.querySelectorAll('h4')[0].innerText = t('description');
+            document.querySelector('#uri-label').innerText = t('uriLabel');
+            document.querySelector('#upload-file-label').innerText = t('uploadFileLabel');
+            document.querySelector('#channel-label').innerText = t('channelLabel');
+            document.querySelector('#epg-label').innerText = t('epgLabel');
+            document.querySelector('#proxy-label').innerText = t('proxyLabel');
 
-        ['#uri', '#uri-name', '#channel', '#epg', '#proxy'].forEach(e => {
-            const ele = document.querySelector(e);
-            ele.addEventListener('focus', () => {
-                ele.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'start'
+            // 更新按钮文字
+            document.querySelectorAll('.confirm').forEach(i => i.innerText = t('confirm'));
+            document.querySelector('#confirm-uri').innerText = '➕ ' + t('add');
+
+            const source = document.querySelector('#source');
+            const uploadFile = document.querySelector('#upload-file');
+
+            uploadFile.onchange = function (e) {
+                handleFiles(e.target.files)
+            }
+
+            const handleFiles = async function (files) {
+                for (let i = 0; i < files.length; i++) {
+                    await read(files[i]);
+                }
+            }
+
+            const read = async (file) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    save('/api/import-text', e.target.result);
+                };
+                reader.readAsText(file);
+            }
+
+            ['#uri', '#uri-name', '#channel', '#epg', '#proxy'].forEach(e => {
+                const ele = document.querySelector(e);
+                ele.addEventListener('focus', () => {
+                    ele.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
                 });
-            });
-        })
+            })
 
-        document.querySelector('#confirm-uri').onclick = () => {
-            let uri = document.querySelector('#uri').value.trim();
-            let name = document.querySelector('#uri-name').value.trim();
-            let ua = document.querySelector('#uri-ua').value.trim();
-            let referrer = document.querySelector('#uri-referrer').value.trim();
+            document.querySelector('#confirm-uri').onclick = () => {
+                let uri = document.querySelector('#uri').value.trim();
+                let name = document.querySelector('#uri-name').value.trim();
+                let ua = document.querySelector('#uri-ua').value.trim();
+                let referrer = document.querySelector('#uri-referrer').value.trim();
 
-            // 强制要求填写名称
-            if (!name) {
-                alert('請輸入視頻源名稱');
-                document.querySelector('#uri-name').focus();
-                return;
-            }
+                if (!name) {
+                    alert('請輸入視頻源名稱');
+                    document.querySelector('#uri-name').focus();
+                    return;
+                }
 
-            if (!uri) {
-                alert('請輸入視頻源地址');
-                return;
-            }
-            if (!uri.startsWith('http')) {
-                uri = 'http://' + uri;
-            }
-            if (!isValidUrl(uri)) {
-                alert(`無效的地址${uri}`);
-                return;
-            }
+                if (!uri) {
+                    alert('請輸入視頻源地址');
+                    return;
+                }
+                if (!uri.startsWith('http')) {
+                    uri = 'http://' + uri;
+                }
+                if (!isValidUrl(uri)) {
+                    alert(`無效的地址${uri}`);
+                    return;
+                }
 
-            console.log('Adding source:', { name, uri, ua, referrer });
+                console.log('Adding source:', { name, uri, ua, referrer });
 
-            const uuid = uuidV4()
-            save('/api/import-uri', JSON.stringify({
-                id: uuid,
-                uri: uri,
-                name: name,
-                ua: ua,
-                referrer: referrer
-            }))
-            showMessage('已確認', 3000);
-
-            // 修改：历史记录显示UA和Referrer状态
-            let uaText = ua ? (ua.length > 8 ? ua.substring(0, 8) + '...' : ua) : '无UA';
-            let refText = referrer ? (referrer.length > 8 ? referrer.substring(0, 8) + '...' : referrer) : '无Ref';
-
-            let htmlString = `<div class="container history">
-                <input type="text" readonly value="${name}" class="history-name" title="${uri}"/>
-                <input type="text" readonly value="●●●●●●●●●●" class="history-uri" title="${uri}"/>
-                <input type="text" readonly value="${uaText}" class="history-ua" title="UA: ${ua || '无'}"/>
-                <input type="text" readonly value="${refText}" class="history-referrer" title="Referrer: ${referrer || '无'}"/>
-                <input type="button" value="${t('remove')}" class="remove" data-source-id="${uuid}" data-uri="${uri}" data-name="${name}" data-ua="${ua}" data-referrer="${referrer}"/>
-            </div>`;
-
-            let doc = new DOMParser().parseFromString(htmlString, 'text/html');
-            const firstChild = source.firstChild;
-            if (firstChild) {
-                source.insertBefore(doc.body.firstChild, firstChild);
-            } else {
-                source.appendChild(doc.body.firstChild);
-            }
-
-            // 清空输入框
-            document.querySelector('#uri-name').value = '';
-            document.querySelector('#uri').value = '';
-            document.querySelector('#uri-ua').value = '';
-            document.querySelector('#uri-referrer').value = '';
-
-            handleRemove()
-        }
-
-        document.querySelector('#confirm-channel').onclick = () => {
-            const channel = document.querySelector('#channel').value.trim();
-            if (channel.length > 0) {
-                save('/api/default-channel', JSON.stringify({
-                    channel: channel
+                const uuid = uuidV4()
+                save('/api/import-uri', JSON.stringify({
+                    id: uuid,
+                    uri: uri,
+                    name: name,
+                    ua: ua,
+                    referrer: referrer
                 }))
                 showMessage('已確認', 3000);
-            } else {
-                alert(`內容為空`);
-            }
-        }
-
-        document.querySelector('#confirm-epg').onclick = () => {
-            const epg = document.querySelector('#epg').value.trim();
-            save('/api/epg', JSON.stringify({
-                epg: epg
-            }))
-            showMessage('已確認', 3000);
-        }
-
-        document.querySelector('#confirm-proxy').onclick = () => {
-            let proxy = document.querySelector('#proxy').value.trim();
-            if (proxy && (!proxy.startsWith('http') && !proxy.startsWith('socks'))) {
-                proxy = 'http://' + proxy;
-            }
-            if (proxy && (!proxy.startsWith('http') && !proxy.startsWith('socks'))) {
-                alert(`無效的地址${proxy}`);
-                return;
-            }
-            if (proxy && !isValidUrl(proxy)) {
-                alert(`無效的地址${proxy}`);
-                return;
-            }
-            document.querySelector('#proxy').value = proxy;
-            save('/api/proxy', JSON.stringify({
-                proxy: proxy
-            }))
-            showMessage('已確認', 3000);
-        }
-
-        const save = async (url, body) => {
-            console.log('Sending to', url, ':', body);
-
-            try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: body
-                });
-
-                const text = await response.text();
-                console.log('Response:', response.status, text);
-                return text;
-            } catch (e) {
-                console.error('Fetch error:', e);
-                throw e;
-            }
-        }
-
-        const handleRemove = () => {
-            const removes = document.querySelectorAll('.remove');
-            [...removes].forEach(remove => {
-                remove.onclick = () => {
-                    const sourceId = remove.dataset.sourceId.trim();
-                    console.log('sourceId', sourceId);
-                    save('/api/remove-source', JSON.stringify({
-                        sourceId: sourceId
-                    }))
-                    remove.parentElement.remove()
-                }
-            })
-        }
-
-        const handleAdd = () => {
-            const addList = document.querySelectorAll('.new-source');
-            [...addList].forEach(add => {
-                add.value = t('add');
-                add.onclick = () => {
-                    const uri = add.dataset.uri.trim();
-                    const name = add.dataset.name.trim();
-                    const ua = add.dataset.ua || '';
-                    const referrer = add.dataset.referrer || '';
-
-                    console.log('Adding from list:', { name, uri, ua, referrer });
-
-                    const uuid = uuidV4();
-                    save('/api/import-uri', JSON.stringify({
-                        id: uuid,
-                        uri: uri,
-                        name: name,
-                        ua: ua,
-                        referrer: referrer
-                    }));
-
-                    add.parentElement.remove();
-
-                    // 显示UA和Referrer
-                    let uaText = ua ? (ua.length > 8 ? ua.substring(0, 8) + '...' : ua) : '无UA';
-                    let refText = referrer ? (referrer.length > 8 ? referrer.substring(0, 8) + '...' : referrer) : '无Ref';
-
-                    let htmlString = `<div class="container history">
-                        <input type="text" readonly value="${name}" class="history-name" title="${uri}"/>
-                        <input type="text" readonly value="●●●●●●●●●●" class="history-uri" title="${uri}"/>
-                        <input type="text" readonly value="${uaText}" class="history-ua" title="UA: ${ua || '无'}"/>
-                        <input type="text" readonly value="${refText}" class="history-referrer" title="Referrer: ${referrer || '无'}"/>
-                        <input type="button" value="${t('remove')}" class="remove" data-source-id="${uuid}" data-uri="${uri}" data-name="${name}" data-ua="${ua}" data-referrer="${referrer}"/>
-                    </div>`;
-
-                    let doc = new DOMParser().parseFromString(htmlString, 'text/html');
-                    const firstChild = source.firstChild;
-                    if (firstChild) {
-                        source.insertBefore(doc.body.firstChild, firstChild);
-                    } else {
-                        source.appendChild(doc.body.firstChild);
-                    }
-
-                    handleRemove();
-
-                    document.querySelector('#uri').value = '';
-                    document.querySelector('#uri-name').value = '';
-                    document.querySelector('#uri-ua').value = '';
-                    document.querySelector('#uri-referrer').value = '';
-                }
-            })
-        }
-
-        const uuidV4 = () => {
-            return ([1e7] + '-' + 1e3 + '-' + 4e3 + '-' + 8e3 + '-' + 1e11).replace(/[018]/g, c =>
-                (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
-            );
-        }
-
-        const isValidUrl = (url) => {
-            try {
-                new URL(url);
-                return true;
-            } catch (e) {
-                return false;
-            }
-        }
-
-        (async () => {
-            const response = await fetch('/api/settings');
-            const json = await response.json();
-            console.log('Settings:', json);
-            document.querySelector('#channel').value = json.channelDefault;
-            document.querySelector('#uri').value = '';
-            document.querySelector('#epg').value = json.epg;
-            document.querySelector('#proxy').value = json.proxy;
-
-            // 修改：历史记录显示UA和Referrer
-            json.history.forEach(v => {
-                let name = v.name || '未命名';
-                let ua = v.ua || '';
-                let referrer = v.referrer || '';
 
                 let uaText = ua ? (ua.length > 8 ? ua.substring(0, 8) + '...' : ua) : '无UA';
                 let refText = referrer ? (referrer.length > 8 ? referrer.substring(0, 8) + '...' : referrer) : '无Ref';
 
-                console.log('History item:', name, v.uri, 'ua:', ua, 'ref:', referrer);
-
                 let htmlString = `<div class="container history">
-                    <input type="text" readonly value="${name}" class="history-name" title="${v.uri}"/>
-                    <input type="text" readonly value="●●●●●●●●●●" class="history-uri" title="${v.uri}"/>
+                    <input type="text" readonly value="${name}" class="history-name" title="${uri}"/>
+                    <input type="text" readonly value="●●●●●●●●●●" class="history-uri" title="${uri}"/>
                     <input type="text" readonly value="${uaText}" class="history-ua" title="UA: ${ua || '无'}"/>
                     <input type="text" readonly value="${refText}" class="history-referrer" title="Referrer: ${referrer || '无'}"/>
-                    <input type="button" value="${t('remove')}" class="remove" data-source-id="${v.id}" data-uri="${v.uri}" data-name="${name}" data-ua="${ua}" data-referrer="${referrer}"/>
+                    <button class="remove" data-source-id="${uuid}" data-uri="${uri}" data-name="${name}" data-ua="${ua}" data-referrer="${referrer}">${t('remove')}</button>
                 </div>`;
 
                 let doc = new DOMParser().parseFromString(htmlString, 'text/html');
-                source.appendChild(doc.body.firstChild);
-            })
-
-            handleRemove()
-
-            const sources = await fetch('/api/sources');
-            const sourcesText = await sources.text();
-            console.log('Raw sources text:', sourcesText);
-
-            const histories = json.history.map(v => v.uri)
-            const sourcesNew = document.querySelector('#sources-new');
-
-            // 按行分割，保留完整URL
-            sourcesText.trim().split("\n").forEach((line) => {
-                if (!line.trim()) return;
-
-                console.log('Processing line:', line);
-
-                let name, uri;
-                const commaIndex = line.indexOf(',');
-
-                if (commaIndex > 0) {
-                    name = line.substring(0, commaIndex).trim();
-                    uri = line.substring(commaIndex + 1).trim();
-                    console.log('Parsed - Name:', name, 'URI:', uri);
+                const firstChild = source.firstChild;
+                if (firstChild) {
+                    source.insertBefore(doc.body.firstChild, firstChild);
                 } else {
-                    uri = line.trim();
-                    const parts = uri.split('/');
-                    name = parts[parts.length - 1]?.replace('.txt', '') || '未命名';
-                    console.log('No comma - URI:', uri, 'Name:', name);
+                    source.appendChild(doc.body.firstChild);
                 }
 
-                if (histories.includes(uri)) {
-                    console.log('URI already in history, skipping:', uri);
+                document.querySelector('#uri-name').value = '';
+                document.querySelector('#uri').value = '';
+                document.querySelector('#uri-ua').value = '';
+                document.querySelector('#uri-referrer').value = '';
+
+                handleRemove()
+            }
+
+            document.querySelector('#confirm-channel').onclick = () => {
+                const channel = document.querySelector('#channel').value.trim();
+                if (channel.length > 0) {
+                    save('/api/default-channel', JSON.stringify({
+                        channel: channel
+                    }))
+                    showMessage('已確認', 3000);
+                } else {
+                    alert(`內容為空`);
+                }
+            }
+
+            document.querySelector('#confirm-epg').onclick = () => {
+                const epg = document.querySelector('#epg').value.trim();
+                save('/api/epg', JSON.stringify({
+                    epg: epg
+                }))
+                showMessage('已確認', 3000);
+            }
+
+            document.querySelector('#confirm-proxy').onclick = () => {
+                let proxy = document.querySelector('#proxy').value.trim();
+                if (proxy && (!proxy.startsWith('http') && !proxy.startsWith('socks'))) {
+                    proxy = 'http://' + proxy;
+                }
+                if (proxy && (!proxy.startsWith('http') && !proxy.startsWith('socks'))) {
+                    alert(`無效的地址${proxy}`);
                     return;
                 }
+                if (proxy && !isValidUrl(proxy)) {
+                    alert(`無效的地址${proxy}`);
+                    return;
+                }
+                document.querySelector('#proxy').value = proxy;
+                save('/api/proxy', JSON.stringify({
+                    proxy: proxy
+                }))
+                showMessage('已確認', 3000);
+            }
 
-                // 预定义列表也显示UA/Referrer占位
-                let htmlString = `<div class="container history">
-                    <input type="text" readonly value="${name}" class="history-name" style="background-color: darkslategray;" title="${uri}"/>
-                    <input type="text" readonly value="●●●●●●●●●●" class="history-uri" style="background-color: darkslategray;" title="${uri}"/>
-                    <input type="text" readonly value="无UA" class="history-ua" style="background-color: darkslategray;" title="点击添加时可设置UA"/>
-                    <input type="text" readonly value="无Ref" class="history-referrer" style="background-color: darkslategray;" title="点击添加时可设置Referrer"/>
-                    <input type="button" value="${t('add')}" class="add new-source" data-uri="${uri}" data-name="${name}" data-ua="" data-referrer=""/>
-                </div>`;
+            const save = async (url, body) => {
+                console.log('Sending to', url, ':', body);
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: body
+                    });
+                    const text = await response.text();
+                    console.log('Response:', response.status, text);
+                    return text;
+                } catch (e) {
+                    console.error('Fetch error:', e);
+                    throw e;
+                }
+            }
 
-                let doc = new DOMParser().parseFromString(htmlString, 'text/html');
-                sourcesNew.appendChild(doc.body.firstChild);
-            })
+            const handleRemove = () => {
+                const removes = document.querySelectorAll('.remove');
+                [...removes].forEach(remove => {
+                    remove.onclick = () => {
+                        const sourceId = remove.dataset.sourceId.trim();
+                        console.log('sourceId', sourceId);
+                        save('/api/remove-source', JSON.stringify({
+                            sourceId: sourceId
+                        }))
+                        remove.parentElement.remove()
+                    }
+                })
+            }
 
-            handleAdd()
-        })()
+            const handleAdd = () => {
+                const addList = document.querySelectorAll('.new-source');
+                [...addList].forEach(add => {
+                    add.innerText = t('add');
+                    add.onclick = () => {
+                        const uri = add.dataset.uri.trim();
+                        const name = add.dataset.name.trim();
+                        const ua = add.dataset.ua || '';
+                        const referrer = add.dataset.referrer || '';
 
-        const showMessage = (message, duration = 3000) => {
-            const messageBox = document.getElementById('messageBox');
-            messageBox.textContent = message;
-            messageBox.classList.add('show');
+                        console.log('Adding from list:', { name, uri, ua, referrer });
 
-            setTimeout(() => {
-                messageBox.classList.remove('show');
-            }, duration);
-        }
-    </script>
+                        const uuid = uuidV4();
+                        save('/api/import-uri', JSON.stringify({
+                            id: uuid,
+                            uri: uri,
+                            name: name,
+                            ua: ua,
+                            referrer: referrer
+                        }));
+
+                        add.parentElement.remove();
+
+                        let uaText = ua ? (ua.length > 8 ? ua.substring(0, 8) + '...' : ua) : '无UA';
+                        let refText = referrer ? (referrer.length > 8 ? referrer.substring(0, 8) + '...' : referrer) : '无Ref';
+
+                        let htmlString = `<div class="container history">
+                            <input type="text" readonly value="${name}" class="history-name" title="${uri}"/>
+                            <input type="text" readonly value="●●●●●●●●●●" class="history-uri" title="${uri}"/>
+                            <input type="text" readonly value="${uaText}" class="history-ua" title="UA: ${ua || '无'}"/>
+                            <input type="text" readonly value="${refText}" class="history-referrer" title="Referrer: ${referrer || '无'}"/>
+                            <button class="remove" data-source-id="${uuid}" data-uri="${uri}" data-name="${name}" data-ua="${ua}" data-referrer="${referrer}">${t('remove')}</button>
+                        </div>`;
+
+                        let doc = new DOMParser().parseFromString(htmlString, 'text/html');
+                        const firstChild = source.firstChild;
+                        if (firstChild) {
+                            source.insertBefore(doc.body.firstChild, firstChild);
+                        } else {
+                            source.appendChild(doc.body.firstChild);
+                        }
+
+                        handleRemove();
+
+                        document.querySelector('#uri').value = '';
+                        document.querySelector('#uri-name').value = '';
+                        document.querySelector('#uri-ua').value = '';
+                        document.querySelector('#uri-referrer').value = '';
+                    }
+                })
+            }
+
+            const uuidV4 = () => {
+                return ([1e7] + '-' + 1e3 + '-' + 4e3 + '-' + 8e3 + '-' + 1e11).replace(/[018]/g, c =>
+                    (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+                );
+            }
+
+            const isValidUrl = (url) => {
+                try {
+                    new URL(url);
+                    return true;
+                } catch (e) {
+                    return false;
+                }
+            }
+
+            (async () => {
+                const response = await fetch('/api/settings');
+                const json = await response.json();
+                console.log('Settings:', json);
+                document.querySelector('#channel').value = json.channelDefault;
+                document.querySelector('#uri').value = '';
+                document.querySelector('#epg').value = json.epg;
+                document.querySelector('#proxy').value = json.proxy;
+
+                json.history.forEach(v => {
+                    let name = v.name || '未命名';
+                    let ua = v.ua || '';
+                    let referrer = v.referrer || '';
+
+                    let uaText = ua ? (ua.length > 8 ? ua.substring(0, 8) + '...' : ua) : '无UA';
+                    let refText = referrer ? (referrer.length > 8 ? referrer.substring(0, 8) + '...' : referrer) : '无Ref';
+
+                    console.log('History item:', name, v.uri, 'ua:', ua, 'ref:', referrer);
+
+                    let htmlString = `<div class="container history">
+                        <input type="text" readonly value="${name}" class="history-name" title="${v.uri}"/>
+                        <input type="text" readonly value="●●●●●●●●●●" class="history-uri" title="${v.uri}"/>
+                        <input type="text" readonly value="${uaText}" class="history-ua" title="UA: ${ua || '无'}"/>
+                        <input type="text" readonly value="${refText}" class="history-referrer" title="Referrer: ${referrer || '无'}"/>
+                        <button class="remove" data-source-id="${v.id}" data-uri="${v.uri}" data-name="${name}" data-ua="${ua}" data-referrer="${referrer}">${t('remove')}</button>
+                    </div>`;
+
+                    let doc = new DOMParser().parseFromString(htmlString, 'text/html');
+                    source.appendChild(doc.body.firstChild);
+                })
+
+                handleRemove()
+
+                const sources = await fetch('/api/sources');
+                const sourcesText = await sources.text();
+                console.log('Raw sources text:', sourcesText);
+
+                const histories = json.history.map(v => v.uri)
+                const sourcesNew = document.querySelector('#sources-new');
+
+                sourcesText.trim().split("\n").forEach((line) => {
+                    if (!line.trim()) return;
+
+                    console.log('Processing line:', line);
+
+                    let name, uri;
+                    const commaIndex = line.indexOf(',');
+
+                    if (commaIndex > 0 && !line.substring(0, commaIndex).includes('http')) {
+                        name = line.substring(0, commaIndex).trim();
+                        uri = line.substring(commaIndex + 1).trim();
+                        console.log('Parsed - Name:', name, 'URI:', uri);
+                    } else {
+                        uri = line.trim();
+                        const parts = uri.split('/');
+                        name = parts[parts.length - 1]?.replace('.txt', '') || '未命名';
+                        console.log('No comma - URI:', uri, 'Name:', name);
+                    }
+
+                    if (histories.includes(uri)) {
+                        console.log('URI already in history, skipping:', uri);
+                        return;
+                    }
+
+                    let htmlString = `<div class="container history">
+                        <input type="text" readonly value="${name}" class="history-name" style="background-color: #2C3E50;" title="${uri}"/>
+                        <input type="text" readonly value="●●●●●●●●●●" class="history-uri" style="background-color: #2C3E50;" title="${uri}"/>
+                        <input type="text" readonly value="无UA" class="history-ua" style="background-color: #2C3E50;" title="点击添加时可设置UA"/>
+                        <input type="text" readonly value="无Ref" class="history-referrer" style="background-color: #2C3E50;" title="点击添加时可设置Referrer"/>
+                        <button class="add new-source" data-uri="${uri}" data-name="${name}" data-ua="" data-referrer="">${t('add')}</button>
+                    </div>`;
+
+                    let doc = new DOMParser().parseFromString(htmlString, 'text/html');
+                    sourcesNew.appendChild(doc.body.firstChild);
+                })
+
+                handleAdd()
+            })()
+
+            const showMessage = (message, duration = 3000) => {
+                const messageBox = document.getElementById('messageBox');
+                messageBox.textContent = message;
+                messageBox.classList.add('show');
+
+                setTimeout(() => {
+                    messageBox.classList.remove('show');
+                }, duration);
+            }
+        </script>
+    </body>
 </html>
