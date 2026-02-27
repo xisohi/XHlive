@@ -151,6 +151,7 @@
                 transform: translateX(0);
             }
         </style>
+        <base target="_blank">
     </head>
     <body>
         <h1 class="title">星輝直播</h1>
@@ -160,19 +161,144 @@
 
         <div class="item">
             <label for="uri-name" id="uri-label">視頻源地址</label>
-            <div class="container" style="flex-wrap: wrap; gap: 0.5rem;">
-                <input type="text" id="uri-name" placeholder="名称（如：安徽移动单播）" style="flex: 0 0 calc(30% - 0.5rem);"/>
-                <input type="text" id="uri" placeholder="https://... (完整地址，包含所有参数)" style="flex: 1;"/>
-                <!-- 修改：删除UA选择框，只保留自定义UA输入 -->
-                <div style="flex: 0 0 100%; display: flex; gap: 0.5rem; margin-top: 0.5rem;">
-                    <input type="text" id="uri-ua" placeholder="User-Agent (可选，如：okHttp/Mod-1.5.0.0)" style="flex: 1;"/>
-                </div>
-                <!-- Referrer输入框 -->
-                <div style="flex: 0 0 100%; display: flex; gap: 0.5rem; margin-top: 0.5rem;">
-                    <input type="text" id="uri-referrer" placeholder="Referer (可选，用于防盗链)" style="flex: 1;"/>
-                </div>
-                <input type="button" id="confirm-uri" value="新增" class="add" style="flex: 0 0 4rem;"/>
+            <div class="input-grid">
+                <input type="text" id="uri-name" placeholder="📺 名称（如：安徽移动单播）" class="input-field input-name"/>
+                <input type="text" id="uri" placeholder="🔗 视频源地址 https://..." class="input-field input-uri"/>
+                <input type="text" id="uri-ua" placeholder="🌐 User-Agent (可选)" class="input-field input-ua"/>
+                <input type="text" id="uri-referrer" placeholder="🔒 Referer 防盗链 (可选)" class="input-field input-referrer"/>
+                <input type="button" id="confirm-uri" value="➕ 新增" class="btn-add"/>
             </div>
+
+            <style>
+                /* 响应式网格布局 */
+                .input-grid {
+                    display: grid;
+                    gap: 0.6rem;
+                    width: 100%;
+                }
+
+                /* 基础输入框样式 */
+                .input-field {
+                    height: 2.8rem;
+                    border-radius: 8px;
+                    border: 1px solid #455A64;
+                    background: #37474F;
+                    color: #fff;
+                    padding: 0 1rem;
+                    font-size: 0.9rem;
+                    width: 100%;
+                    box-sizing: border-box;
+                    transition: all 0.2s;
+                }
+
+                .input-field:focus {
+                    outline: none;
+                    border-color: #009688;
+                    box-shadow: 0 0 0 3px rgba(0, 150, 136, 0.1);
+                }
+
+                .input-field::placeholder {
+                    color: #90A4AE;
+                }
+
+                /* 新增按钮样式 */
+                .btn-add {
+                    height: 2.8rem;
+                    border-radius: 8px;
+                    border: none;
+                    background: linear-gradient(135deg, #009688 0%, #00796B 100%);
+                    color: #fff;
+                    font-weight: 600;
+                    cursor: pointer;
+                    font-size: 0.9rem;
+                    box-shadow: 0 2px 8px rgba(0, 150, 136, 0.3);
+                    transition: all 0.2s;
+                    width: 100%;
+                }
+
+                .btn-add:hover {
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 12px rgba(0, 150, 136, 0.4);
+                }
+
+                .btn-add:active {
+                    transform: translateY(0);
+                }
+
+                /* PC端布局 (>=768px) - 两行 */
+                @media (min-width: 768px) {
+                    .input-grid {
+                        grid-template-columns: 1fr 2fr 1fr 1.5fr 80px;
+                        grid-template-rows: auto auto;
+                    }
+
+                    .input-name {
+                        grid-column: 1;
+                        grid-row: 1;
+                    }
+
+                    .input-uri {
+                        grid-column: 2 / 4;
+                        grid-row: 1;
+                    }
+
+                    .input-ua {
+                        grid-column: 1;
+                        grid-row: 2;
+                    }
+
+                    .input-referrer {
+                        grid-column: 2 / 4;
+                        grid-row: 2;
+                    }
+
+                    .btn-add {
+                        grid-column: 4 / 6;
+                        grid-row: 2;
+                        width: auto;
+                    }
+                }
+
+                /* 平板端 (480px-767px) - 简化两行 */
+                @media (min-width: 480px) and (max-width: 767px) {
+                    .input-grid {
+                        grid-template-columns: 1fr 1fr;
+                        grid-template-rows: auto auto auto;
+                    }
+
+                    .input-name { grid-column: 1; grid-row: 1; }
+                    .input-uri { grid-column: 2; grid-row: 1; }
+                    .input-ua { grid-column: 1; grid-row: 2; }
+                    .input-referrer { grid-column: 2; grid-row: 2; }
+                    .btn-add {
+                        grid-column: 1 / 3;
+                        grid-row: 3;
+                        width: 100%;
+                    }
+                }
+
+                /* 手机端 (<480px) - 垂直堆叠 */
+                @media (max-width: 479px) {
+                    .input-grid {
+                        grid-template-columns: 1fr;
+                        gap: 0.5rem;
+                    }
+
+                    .input-field, .btn-add {
+                        width: 100%;
+                    }
+
+                    .input-field {
+                        height: 2.6rem;
+                        font-size: 16px; /* 防止iOS缩放 */
+                    }
+
+                    .btn-add {
+                        height: 2.6rem;
+                        margin-top: 0.3rem;
+                    }
+                }
+            </style>
             <div id="sources-new"></div>
             <div id="source"></div>
         </div>
