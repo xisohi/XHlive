@@ -104,25 +104,33 @@
             }
 
             .history-name {
-                flex: 0 0 30%;
+                flex: 0 0 25%;
                 margin-right: 0.5rem;
                 background-color: grey;
             }
 
             .history-uri {
-                flex: 1;
+                flex: 0 0 35%;
                 margin-right: 0.5rem;
                 background-color: grey;
             }
 
             .history-ua {
-                flex: 0 0 80px;
+                flex: 0 0 20%;
                 margin-right: 0.5rem;
                 background-color: grey;
                 color: #EEEEEE;
                 text-align: center;
-                border: none;
-                border-radius: 4px;
+                font-size: 0.8rem;
+            }
+
+            .history-referrer {
+                flex: 0 0 20%;
+                margin-right: 0.5rem;
+                background-color: grey;
+                color: #EEEEEE;
+                text-align: center;
+                font-size: 0.8rem;
             }
 
             .message-box {
@@ -155,16 +163,13 @@
             <div class="container" style="flex-wrap: wrap; gap: 0.5rem;">
                 <input type="text" id="uri-name" placeholder="名称（如：安徽移动单播）" style="flex: 0 0 calc(30% - 0.5rem);"/>
                 <input type="text" id="uri" placeholder="https://... (完整地址，包含所有参数)" style="flex: 1;"/>
+                <!-- 修改：删除UA选择框，只保留自定义UA输入 -->
                 <div style="flex: 0 0 100%; display: flex; gap: 0.5rem; margin-top: 0.5rem;">
-                    <select id="ua-preset" style="flex: 0 0 30%; height: 2.6rem; background-color: #fff; color: #1a1a1a; border-radius: 4px;">
-                        <option value="">选择常用UA...</option>
-                        <option value="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36">Windows Chrome</option>
-                        <option value="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1">iPhone Safari</option>
-                        <option value="Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36">Android Chrome</option>
-                        <option value="Dalvik/2.1.0 (Linux; U; Android 7.1.2; MXQ Build/NHG47L)">Android TV Box</option>
-                        <option value="okHttp/Mod-1.5.0.0">okHttp/Mod-1.5.0.0</option>
-                    </select>
-                    <input type="text" id="uri-ua" placeholder="或自定义User-Agent" style="flex: 1;"/>
+                    <input type="text" id="uri-ua" placeholder="User-Agent (可选，如：okHttp/Mod-1.5.0.0)" style="flex: 1;"/>
+                </div>
+                <!-- Referrer输入框 -->
+                <div style="flex: 0 0 100%; display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+                    <input type="text" id="uri-referrer" placeholder="Referer (可选，用于防盗链)" style="flex: 1;"/>
                 </div>
                 <input type="button" id="confirm-uri" value="新增" class="add" style="flex: 0 0 4rem;"/>
             </div>
@@ -261,13 +266,6 @@
             i => i.value = t('add')
         );
 
-        // 添加UA预设选择功能
-        document.getElementById('ua-preset').addEventListener('change', function(e) {
-            if (this.value) {
-                document.getElementById('uri-ua').value = this.value;
-            }
-        });
-
         const source = document.querySelector('#source');
 
         const uploadFile = document.querySelector('#upload-file');
@@ -303,7 +301,8 @@
         document.querySelector('#confirm-uri').onclick = () => {
             let uri = document.querySelector('#uri').value.trim();
             let name = document.querySelector('#uri-name').value.trim();
-            let ua = document.querySelector('#uri-ua').value.trim();  // 获取UA
+            let ua = document.querySelector('#uri-ua').value.trim();
+            let referrer = document.querySelector('#uri-referrer').value.trim();
 
             // 强制要求填写名称
             if (!name) {
@@ -324,25 +323,30 @@
                 return;
             }
 
-            // 调试：打印完整的URI
-            console.log('Adding source with URI:', uri);
-            console.log('URI length:', uri.length);
+            console.log('Adding source:', { name, uri, ua, referrer });
 
             const uuid = uuidV4()
             save('/api/import-uri', JSON.stringify({
                 id: uuid,
                 uri: uri,
                 name: name,
-                ua: ua  // 添加UA
+                ua: ua,
+                referrer: referrer
             }))
             showMessage('已確認', 3000);
+
+            // 修改：历史记录显示UA和Referrer状态
+            let uaText = ua ? (ua.length > 8 ? ua.substring(0, 8) + '...' : ua) : '无UA';
+            let refText = referrer ? (referrer.length > 8 ? referrer.substring(0, 8) + '...' : referrer) : '无Ref';
 
             let htmlString = `<div class="container history">
                 <input type="text" readonly value="${name}" class="history-name" title="${uri}"/>
                 <input type="text" readonly value="●●●●●●●●●●" class="history-uri" title="${uri}"/>
-                <input type="text" readonly value="${ua ? 'UA已设置' : '无UA'}" class="history-ua" title="${ua}"/>
-                <input type="button" value="${t('remove')}" class="remove" data-source-id="${uuid}" data-uri="${uri}" data-name="${name}" data-ua="${ua}"/>
+                <input type="text" readonly value="${uaText}" class="history-ua" title="UA: ${ua || '无'}"/>
+                <input type="text" readonly value="${refText}" class="history-referrer" title="Referrer: ${referrer || '无'}"/>
+                <input type="button" value="${t('remove')}" class="remove" data-source-id="${uuid}" data-uri="${uri}" data-name="${name}" data-ua="${ua}" data-referrer="${referrer}"/>
             </div>`;
+
             let doc = new DOMParser().parseFromString(htmlString, 'text/html');
             const firstChild = source.firstChild;
             if (firstChild) {
@@ -354,7 +358,8 @@
             // 清空输入框
             document.querySelector('#uri-name').value = '';
             document.querySelector('#uri').value = '';
-            document.querySelector('#uri-ua').value = '';  // 清空UA
+            document.querySelector('#uri-ua').value = '';
+            document.querySelector('#uri-referrer').value = '';
 
             handleRemove()
         }
@@ -400,12 +405,24 @@
         }
 
         const save = async (url, body) => {
-            const response = await fetch(url, {
-                method: 'POST',
-                body: body
-            });
-            const json = await response.text();
-            console.log(json);
+            console.log('Sending to', url, ':', body);
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: body
+                });
+
+                const text = await response.text();
+                console.log('Response:', response.status, text);
+                return text;
+            } catch (e) {
+                console.error('Fetch error:', e);
+                throw e;
+            }
         }
 
         const handleRemove = () => {
@@ -429,26 +446,34 @@
                 add.onclick = () => {
                     const uri = add.dataset.uri.trim();
                     const name = add.dataset.name.trim();
-                    const ua = add.dataset.ua || '';  // 获取UA
-                    console.log('Adding from list - uri:', uri, 'name:', name, 'ua:', ua);
-                    console.log('URI length:', uri.length);
+                    const ua = add.dataset.ua || '';
+                    const referrer = add.dataset.referrer || '';
+
+                    console.log('Adding from list:', { name, uri, ua, referrer });
 
                     const uuid = uuidV4();
                     save('/api/import-uri', JSON.stringify({
                         id: uuid,
                         uri: uri,
                         name: name,
-                        ua: ua
+                        ua: ua,
+                        referrer: referrer
                     }));
 
                     add.parentElement.remove();
 
+                    // 显示UA和Referrer
+                    let uaText = ua ? (ua.length > 8 ? ua.substring(0, 8) + '...' : ua) : '无UA';
+                    let refText = referrer ? (referrer.length > 8 ? referrer.substring(0, 8) + '...' : referrer) : '无Ref';
+
                     let htmlString = `<div class="container history">
                         <input type="text" readonly value="${name}" class="history-name" title="${uri}"/>
                         <input type="text" readonly value="●●●●●●●●●●" class="history-uri" title="${uri}"/>
-                        <input type="text" readonly value="${ua ? 'UA已设置' : '无UA'}" class="history-ua" title="${ua}"/>
-                        <input type="button" value="${t('remove')}" class="remove" data-source-id="${uuid}" data-uri="${uri}" data-name="${name}" data-ua="${ua}"/>
+                        <input type="text" readonly value="${uaText}" class="history-ua" title="UA: ${ua || '无'}"/>
+                        <input type="text" readonly value="${refText}" class="history-referrer" title="Referrer: ${referrer || '无'}"/>
+                        <input type="button" value="${t('remove')}" class="remove" data-source-id="${uuid}" data-uri="${uri}" data-name="${name}" data-ua="${ua}" data-referrer="${referrer}"/>
                     </div>`;
+
                     let doc = new DOMParser().parseFromString(htmlString, 'text/html');
                     const firstChild = source.firstChild;
                     if (firstChild) {
@@ -461,7 +486,8 @@
 
                     document.querySelector('#uri').value = '';
                     document.querySelector('#uri-name').value = '';
-                    document.querySelector('#uri-ua').value = '';  // 清空UA
+                    document.querySelector('#uri-ua').value = '';
+                    document.querySelector('#uri-referrer').value = '';
                 }
             })
         }
@@ -486,20 +512,29 @@
             const json = await response.json();
             console.log('Settings:', json);
             document.querySelector('#channel').value = json.channelDefault;
-            document.querySelector('#uri').value = '';  // 改为清空
+            document.querySelector('#uri').value = '';
             document.querySelector('#epg').value = json.epg;
             document.querySelector('#proxy').value = json.proxy;
 
+            // 修改：历史记录显示UA和Referrer
             json.history.forEach(v => {
                 let name = v.name || '未命名';
-                let ua = v.ua || '';  // 获取UA
-                console.log('History item:', name, v.uri, 'length:', v.uri.length);
+                let ua = v.ua || '';
+                let referrer = v.referrer || '';
+
+                let uaText = ua ? (ua.length > 8 ? ua.substring(0, 8) + '...' : ua) : '无UA';
+                let refText = referrer ? (referrer.length > 8 ? referrer.substring(0, 8) + '...' : referrer) : '无Ref';
+
+                console.log('History item:', name, v.uri, 'ua:', ua, 'ref:', referrer);
+
                 let htmlString = `<div class="container history">
                     <input type="text" readonly value="${name}" class="history-name" title="${v.uri}"/>
                     <input type="text" readonly value="●●●●●●●●●●" class="history-uri" title="${v.uri}"/>
-                    <input type="text" readonly value="${ua ? 'UA已设置' : '无UA'}" class="history-ua" title="${ua}"/>
-                    <input type="button" value="${t('remove')}" class="remove" data-source-id="${v.id}" data-uri="${v.uri}" data-name="${name}" data-ua="${ua}"/>
+                    <input type="text" readonly value="${uaText}" class="history-ua" title="UA: ${ua || '无'}"/>
+                    <input type="text" readonly value="${refText}" class="history-referrer" title="Referrer: ${referrer || '无'}"/>
+                    <input type="button" value="${t('remove')}" class="remove" data-source-id="${v.id}" data-uri="${v.uri}" data-name="${name}" data-ua="${ua}" data-referrer="${referrer}"/>
                 </div>`;
+
                 let doc = new DOMParser().parseFromString(htmlString, 'text/html');
                 source.appendChild(doc.body.firstChild);
             })
@@ -513,48 +548,40 @@
             const histories = json.history.map(v => v.uri)
             const sourcesNew = document.querySelector('#sources-new');
 
-            // 按行分割，保留完整URL（包括参数）
+            // 按行分割，保留完整URL
             sourcesText.trim().split("\n").forEach((line) => {
                 if (!line.trim()) return;
 
-                // 调试：打印每一行
                 console.log('Processing line:', line);
 
                 let name, uri;
-                // 找到第一个逗号的位置
                 const commaIndex = line.indexOf(',');
 
                 if (commaIndex > 0) {
-                    // 提取名称（逗号前的内容）
                     name = line.substring(0, commaIndex).trim();
-                    // 提取完整的URL（逗号后的所有内容，包括所有参数）
                     uri = line.substring(commaIndex + 1).trim();
-
-                    // 调试：打印解析结果
-                    console.log('Parsed - Name:', name);
-                    console.log('Parsed - URI:', uri);
-                    console.log('URI length:', uri.length);
+                    console.log('Parsed - Name:', name, 'URI:', uri);
                 } else {
-                    // 如果没有逗号，整行作为URL
                     uri = line.trim();
                     const parts = uri.split('/');
                     name = parts[parts.length - 1]?.replace('.txt', '') || '未命名';
                     console.log('No comma - URI:', uri, 'Name:', name);
                 }
 
-                // 检查是否已在历史记录中
                 if (histories.includes(uri)) {
                     console.log('URI already in history, skipping:', uri);
                     return;
                 }
 
-                // 创建可添加的源列表项
+                // 预定义列表也显示UA/Referrer占位
                 let htmlString = `<div class="container history">
                     <input type="text" readonly value="${name}" class="history-name" style="background-color: darkslategray;" title="${uri}"/>
                     <input type="text" readonly value="●●●●●●●●●●" class="history-uri" style="background-color: darkslategray;" title="${uri}"/>
                     <input type="text" readonly value="无UA" class="history-ua" style="background-color: darkslategray;" title="点击添加时可设置UA"/>
-                    <input type="button" value="${t('add')}" class="add new-source" data-uri="${uri}" data-name="${name}" data-ua=""/>
+                    <input type="text" readonly value="无Ref" class="history-referrer" style="background-color: darkslategray;" title="点击添加时可设置Referrer"/>
+                    <input type="button" value="${t('add')}" class="add new-source" data-uri="${uri}" data-name="${name}" data-ua="" data-referrer=""/>
                 </div>`;
+
                 let doc = new DOMParser().parseFromString(htmlString, 'text/html');
                 sourcesNew.appendChild(doc.body.firstChild);
             })

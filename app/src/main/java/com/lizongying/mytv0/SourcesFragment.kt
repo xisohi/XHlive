@@ -98,8 +98,9 @@ class SourcesFragment : DialogFragment(), SourcesAdapter.ItemListener {
     override fun onItemClicked(position: Int, tag: String) {
         viewModel.sources.getSource(position)?.let {
             val uri = Uri.parse(it.uri)
+            // 关键修复：传递source的ua和referrer
             handler.post {
-                viewModel.importFromUri(uri)
+                viewModel.importFromUri(uri, it.id ?: "", it.ua, it.referrer)
             }
         }
 

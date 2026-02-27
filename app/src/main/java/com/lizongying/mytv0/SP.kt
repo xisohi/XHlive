@@ -1,6 +1,5 @@
 package com.lizongying.mytv0
 
-
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
@@ -82,11 +81,9 @@ object SP {
     const val DEFAULT_CONFIG_AUTO_LOAD = false
     var DEFAULT_SOURCES = ""
     const val DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
     private lateinit var sp: SharedPreferences
 
-    /**
-     * The method must be invoked as early as possible(At least before using the keys)
-     */
     fun init(context: Context) {
         sp = context.getSharedPreferences(
             context.getString(R.string.app_name),
@@ -96,26 +93,23 @@ object SP {
         context.resources.openRawResource(R.raw.sources).bufferedReader()
             .use {
                 val str = it.readText()
-                if (str.isNotEmpty()) {
-                    val lines = Gua().decode(str).trim().split("\n")
-                    val sources = lines.mapNotNull { line ->
-                        val trimmed = line.trim()
-                        if (trimmed.isEmpty()) return@mapNotNull null
+                Log.i(TAG, "Raw sources.txt (encoded): ${str.take(100)}...")
 
-                        // 解析 "名称,URL" 格式
-                        val parts = trimmed.split(",", limit = 2)
-                        if (parts.size >= 2) {
-                            // 新格式：名称,URL
-                            Source(
-                                uri = parts[1].trim(),
-                                name = parts[0].trim()
-                            )
-                        } else {
-                            // 旧格式：只有URL（兼容）
-                            Source(uri = trimmed)
-                        }
-                    }
+                if (str.isNotEmpty()) {
+                    val decoded = Gua().decode(str).trim()
+                    Log.i(TAG, "Decoded sources.txt (${decoded.length} chars):")
+                    Log.i(TAG, "Content preview:\n$decoded")
+
+                    val sources = parseSources(decoded)
+
+                    // 保存为JSON字符串
                     DEFAULT_SOURCES = gson.toJson(sources, typeSourceList) ?: ""
+                    Log.i(TAG, "Saved to SP, loaded ${sources.size} sources")
+
+                    // 验证每个源的UA和Referrer
+                    sources.forEachIndexed { index, source ->
+                        Log.i(TAG, "Source[$index]: name='${source.name}', uri='${source.uri.take(50)}...', ua='${source.ua}', referrer='${source.referrer}'")
+                    }
                 }
             }
 
@@ -123,6 +117,210 @@ object SP {
         Log.i(TAG, "list position $position")
         Log.i(TAG, "default channel $channel")
         Log.i(TAG, "proxy $proxy")
+        Log.i(TAG, "DEFAULT_SOURCES length: ${DEFAULT_SOURCES.length}")
+    }
+
+    /**
+     * 解析源列表，支持多种格式：
+     * 1. JSON格式：以 [ 开头
+     * 2. 带字段标识的TXT格式：name:名称,uri:URL,ua:UA,referrer:Referrer
+     * 3. 传统TXT格式：名称,URL
+     */
+    private fun parseSources(content: String): List<Source> {
+        return when {
+            // JSON格式
+            content.trimStart().startsWith('[') -> {
+                try {
+                    val type = object : com.google.gson.reflect.TypeToken<List<Source>>() {}.type
+                    val sources: List<Source> = gson.fromJson(content, type)
+                    Log.i(TAG, "Parsed JSON format, found ${sources.size} sources")
+                    sources.forEachIndexed { index, source ->
+                        Log.i(TAG, "  [$index] name=${source.name}, uri=${source.uri.take(50)}..., ua='${source.ua}', referrer='${source.referrer}'")
+                    }
+                    sources
+                } catch (e: Exception) {
+                    Log.e(TAG, "parse sources json error", e)
+                    emptyList()
+                }
+            }
+
+            // 带字段标识的TXT格式（包含冒号）
+            content.contains(":") -> {
+                parseTaggedFormat(content)
+            }
+
+            // 传统TXT格式（按行，逗号分隔）
+            else -> {
+                parseTraditionalFormat(content)
+            }
+        }
+    }
+
+    /**
+     * 解析带字段标识的TXT格式
+     * 格式：name:名称,uri:URL,ua:UA,referrer:Referrer
+     * 支持URI后面有空格的情况，会自动trim
+     */
+    private fun parseTaggedFormat(content: String): List<Source> {
+        Log.i(TAG, "========== parseTaggedFormat ==========")
+        Log.i(TAG, "Content length: ${content.length}")
+
+        // 先trim整个内容，去除首尾空白
+        val trimmedContent = content.trim()
+
+        val lines = if (trimmedContent.contains("\n")) {
+            trimmedContent.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+        } else {
+            listOf(trimmedContent)
+        }
+
+        Log.i(TAG, "Found ${lines.size} lines")
+
+        val sources = mutableListOf<Source>()
+
+        lines.forEachIndexed { lineIndex, line ->
+            Log.i(TAG, "--- Processing line $lineIndex ---")
+            Log.i(TAG, "Raw line: '${line}'")
+
+            // 按逗号分割字段对，但要去掉每个部分的空格
+            val pairs = line.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            Log.i(TAG, "Split into ${pairs.size} pairs: $pairs")
+
+            var name = ""
+            var uri = ""
+            var ua = ""
+            var referrer = ""
+
+            // 解析每个字段对
+            pairs.forEach { pair ->
+                Log.i(TAG, "  Parsing pair: '$pair'")
+
+                // 找到第一个冒号的位置（不是最后一个，因为URL中可能有冒号）
+                val colonIndex = pair.indexOf(':')
+
+                if (colonIndex > 0) {
+                    val key = pair.substring(0, colonIndex).trim().lowercase()
+                    // 冒号后面的所有内容都是值（URL可能包含冒号，如http://）
+                    val value = pair.substring(colonIndex + 1).trim()
+
+                    Log.i(TAG, "    key='$key', value='$value'")
+
+                    when (key) {
+                        "name" -> {
+                            name = value
+                            Log.i(TAG, "      -> set name = '$name'")
+                        }
+                        "uri", "url" -> {
+                            uri = value
+                            Log.i(TAG, "      -> set uri = '$uri'")
+                        }
+                        "ua", "user-agent", "useragent" -> {
+                            ua = value
+                            Log.i(TAG, "      -> set ua = '$ua'")
+                        }
+                        "referrer", "referer" -> {
+                            referrer = value
+                            Log.i(TAG, "      -> set referrer = '$referrer'")
+                        }
+                        else -> Log.w(TAG, "      Unknown field: $key")
+                    }
+                } else {
+                    Log.w(TAG, "    No colon found in pair: '$pair', skipping")
+                }
+            }
+
+            // 验证URI不为空才创建Source
+            if (uri.isNotEmpty()) {
+                val source = Source(
+                    uri = uri,
+                    name = name.ifEmpty { "未命名" },
+                    ua = ua,
+                    referrer = referrer
+                )
+                sources.add(source)
+                Log.i(TAG, "✅ Created source $lineIndex: name='$name', uri='$uri', ua='$ua', referrer='$referrer'")
+            } else {
+                Log.e(TAG, "❌ Skipping line without URI: $line")
+            }
+        }
+
+        Log.i(TAG, "========== parseTaggedFormat finished ==========")
+        Log.i(TAG, "Created ${sources.size} sources")
+        sources.forEachIndexed { index, source ->
+            Log.i(TAG, "  Source $index: name=${source.name}, uri=${source.uri.take(50)}..., ua='${source.ua}', referrer='${source.referrer}'")
+        }
+
+        return sources
+    }
+
+    /**
+     * 解析传统TXT格式（兼容旧格式）
+     * 格式：名称,URL 或 名称,URL,UA,Referrer
+     */
+    private fun parseTraditionalFormat(content: String): List<Source> {
+        val sources = mutableListOf<Source>()
+        val lines = content.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+
+        lines.forEach { line ->
+            val parts = line.split(",", limit = 4).map { it.trim() }
+
+            when (parts.size) {
+                4 -> {
+                    // 新格式：名称,URL,UA,Referrer
+                    val source = Source(
+                        name = parts[0],
+                        uri = parts[1],
+                        ua = parts[2],
+                        referrer = parts[3]
+                    )
+                    sources.add(source)
+                    Log.d(TAG, "Parsed traditional line (4 parts): ${parts[0]}, ${parts[1]}, ua=${parts[2]}, referrer=${parts[3]}")
+                }
+                3 -> {
+                    // 可能是：名称,URL,UA 或 名称,URL,Referrer
+                    // 通过判断是否是http开头来区分
+                    val thirdPart = parts[2]
+                    if (thirdPart.startsWith("http")) {
+                        // 第三个是Referrer
+                        val source = Source(
+                            name = parts[0],
+                            uri = parts[1],
+                            referrer = thirdPart
+                        )
+                        sources.add(source)
+                        Log.d(TAG, "Parsed traditional line (3 parts with referrer): ${parts[0]}, ${parts[1]}, referrer=$thirdPart")
+                    } else {
+                        // 第三个是UA
+                        val source = Source(
+                            name = parts[0],
+                            uri = parts[1],
+                            ua = thirdPart
+                        )
+                        sources.add(source)
+                        Log.d(TAG, "Parsed traditional line (3 parts with ua): ${parts[0]}, ${parts[1]}, ua=$thirdPart")
+                    }
+                }
+                2 -> {
+                    // 旧格式：名称,URL
+                    val source = Source(
+                        name = parts[0],
+                        uri = parts[1]
+                    )
+                    sources.add(source)
+                    Log.d(TAG, "Parsed traditional line (2 parts): ${parts[0]}, ${parts[1]}")
+                }
+                else -> {
+                    Log.w(TAG, "Skipping invalid line: $line")
+                }
+            }
+        }
+
+        Log.i(TAG, "Parsed traditional format, found ${sources.size} sources")
+        return sources
+    }
+
+    fun getSharedPreferences(): SharedPreferences {
+        return sp
     }
 
     var channelReversal: Boolean
@@ -201,12 +399,9 @@ object SP {
         } else {
             stringSet.remove(id.toString())
         }
-
         sp.edit().putStringSet(KEY_LIKE, stringSet).apply()
     }
-    fun getSharedPreferences(): SharedPreferences {
-        return sp
-    }
+
     fun deleteLike() {
         sp.edit().remove(KEY_LIKE).apply()
     }
