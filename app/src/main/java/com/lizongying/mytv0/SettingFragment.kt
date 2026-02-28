@@ -4,11 +4,13 @@ import MainViewModel
 import MainViewModel.Companion.CACHE_FILE_NAME
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -26,6 +28,7 @@ import com.lizongying.mytv0.SimpleServer.Companion.PORT
 import com.lizongying.mytv0.databinding.SettingBinding
 import kotlin.math.max
 import kotlin.math.min
+import com.lizongying.mytv0.BuildConfig
 
 class SettingFragment : Fragment() {
 
@@ -54,9 +57,9 @@ class SettingFragment : Fragment() {
 
         _binding = SettingBinding.inflate(inflater, container, false)
 
-        // 初始化 UpdateManager
-        updateManager = UpdateManager(context, context.appVersionCode)
-        Log.i(TAG, "UpdateManager初始化完成，当前版本码: ${context.appVersionCode}")
+        val versionCode = BuildConfig.VERSION_CODE.toLong()
+        updateManager = UpdateManager(context, versionCode)
+        Log.i(TAG, "UpdateManager初始化完成，当前版本码: $versionCode (来自 BuildConfig)")
 
         // 检查按钮是否存在
         if (binding.checkVersion == null) {
@@ -389,30 +392,54 @@ class SettingFragment : Fragment() {
 
     private fun requestInstallPermissions() {
         val context = requireContext()
-
         Log.i(TAG, "===== 开始请求权限 =====")
-        Log.i(TAG, "调用 updateManager.checkAndUpdate()")
+        Log.i(TAG, "SDK版本: ${Build.VERSION.SDK_INT}")
 
-        // 直接调用更新，跳过权限检查以便测试
-        updateManager.checkAndUpdate()
+        // Android 8.0+ 才需要检查安装权限
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val canInstall = context.packageManager.canRequestPackageInstalls()
+            Log.i(TAG, "canRequestPackageInstalls: $canInstall")
 
-        // 原有权限代码暂时注释掉
-        /*
+            if (!canInstall) {
+                // 显示对话框引导用户去系统设置开启
+                androidx.appcompat.app.AlertDialog.Builder(context)
+                    .setTitle("需要安装权限")
+                    .setMessage("请允许安装未知应用，才能自动更新")
+                    .setPositiveButton("去设置") { _, _ ->
+                        val intent = Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                            data = Uri.parse("package:${context.packageName}")
+                        }
+                        startActivity(intent)
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
+                return
+            }
+        } else {
+            Log.i(TAG, "Android < 8.0, 跳过安装权限检查")
+            // Android 5.0-7.1 需要在设置中手动开启"未知来源"
+        }
+
+        // 检查存储权限
         val permissionsList = mutableListOf<String>()
-
-        System.out.println("SettingFragment: 點擊了更新按鈕")
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
-            permissionsList.add(Manifest.permission.REQUEST_INSTALL_PACKAGES)
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            permissionsList.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            permissionsList.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
 
         if (permissionsList.isNotEmpty()) {
-            Log.i(TAG, "申請權限: $permissionsList")
-            updateManager.checkAndUpdate()
+            Log.i(TAG, "请求存储权限: $permissionsList")
+            ActivityCompat.requestPermissions(
+                requireActivity(),
+                permissionsList.toTypedArray(),
+                PERMISSIONS_REQUEST_CODE
+            )
         } else {
+            Log.i(TAG, "✅ 已有所有权限，开始检查更新")
             updateManager.checkAndUpdate()
         }
-        */
     }
 
     private fun requestReadPermissions() {
@@ -486,22 +513,15 @@ class SettingFragment : Fragment() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        when (requestCode) {
-            PERMISSION_READ_EXTERNAL_STORAGE_REQUEST_CODE -> {
-                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    viewModel.importFromUri(uri)
-                } else {
-                    R.string.authorization_failed.showToast()
-                }
-            }
-            PERMISSIONS_REQUEST_CODE -> {
-                val allPermissionsGranted = grantResults.all { it == PackageManager.PERMISSION_GRANTED }
-                if (allPermissionsGranted) {
-                    updateManager.checkAndUpdate()
-                } else {
-                    Log.w(TAG, "ask permissions failed")
-                    R.string.authorization_failed.showToast()
-                }
+
+        if (requestCode == PERMISSIONS_REQUEST_CODE) {
+            val allGranted = grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+            if (allGranted) {
+                Log.i(TAG, "✅ 存储权限授予成功，开始检查更新")
+                updateManager.checkAndUpdate()
+            } else {
+                Log.w(TAG, "❌ 存储权限被拒绝")
+                Toast.makeText(context, "需要存储权限才能下载更新", Toast.LENGTH_LONG).show()
             }
         }
     }
