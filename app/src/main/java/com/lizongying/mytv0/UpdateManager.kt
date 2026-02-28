@@ -42,6 +42,8 @@ class UpdateManager(
     private var currentProxyAttempt = 0
     // 最大重试次数（包括代理切换）
     private val maxRetryCount = 3
+    // 上次报告的进度，避免重复 Toast
+    private var lastReportedProgress = -1
 
     companion object {
         private const val TAG = "UpdateManager"
@@ -300,6 +302,8 @@ class UpdateManager(
     private fun enqueueDownload(downloadUrl: String, apkFileName: String, versionName: String) {
         try {
             isDownloading = true
+            lastReportedProgress = -1  // 重置进度记录
+
             val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
             val request = Request(Uri.parse(downloadUrl))
 
@@ -329,6 +333,9 @@ class UpdateManager(
             Log.i(TAG, "当前代理: ${Github.getCurrentProxy()}")
             Log.i(TAG, "=".repeat(50))
 
+            // 显示初始 Toast
+            Toast.makeText(context, "开始下载更新...", Toast.LENGTH_SHORT).show()
+
             downloadReceiver = DownloadReceiver(
                 WeakReference(context),
                 apkFileName,
@@ -336,7 +343,27 @@ class UpdateManager(
             )
 
             registerDownloadReceiverWithFlags()
+
+            // 进度查询 - 添加 Toast 显示
             getDownloadProgress(context, downloadId) { progress ->
+                when {
+                    progress in 0..99 -> {
+                        // 每 10% 更新一次 Toast，避免频繁闪烁
+                        if (progress % 10 == 0 && progress != lastReportedProgress) {
+                            lastReportedProgress = progress
+                            Toast.makeText(context, "下载进度: $progress%", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    progress == 100 -> {
+                        if (lastReportedProgress != 100) {
+                            lastReportedProgress = 100
+                            Toast.makeText(context, "下载完成，准备安装", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    progress == -1 -> {
+                        Toast.makeText(context, "下载失败", Toast.LENGTH_SHORT).show()
+                    }
+                }
                 Log.i(TAG, "下载进度: $progress%")
             }
 
@@ -372,7 +399,7 @@ class UpdateManager(
     }
 
     /* ------------------------------------------------ */
-    /*  进度轮询（优化版本）                           */
+    /*  进度轮询（优化版本）- 带 Toast 显示             */
     /* ------------------------------------------------ */
     private fun getDownloadProgress(
         context: Context,
@@ -389,23 +416,42 @@ class UpdateManager(
 
                     cursor?.use {
                         if (it.moveToFirst()) {
-                            val down = it.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
-                            val total = it.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
-                            if (total >= 0 && down >= 0) {
-                                val totalSize = it.getLong(total)
-                                val downloaded = it.getLong(down)
-                                if (totalSize > 0) {
-                                    val progress = (downloaded * 100L / totalSize).toInt()
-                                    progressListener(progress)
-                                    if (progress < 100) {
-                                        progressHandler?.postDelayed(this, PROGRESS_UPDATE_INTERVAL)
-                                    } else {
-                                        Log.i(TAG, "下载完成，停止进度轮询")
+                            val status = it.getInt(it.getColumnIndex(DownloadManager.COLUMN_STATUS))
+
+                            when (status) {
+                                DownloadManager.STATUS_PENDING -> {
+                                    progressListener(0)
+                                    // 继续轮询
+                                    progressHandler?.postDelayed(this, PROGRESS_UPDATE_INTERVAL)
+                                }
+                                DownloadManager.STATUS_RUNNING -> {
+                                    val total = it.getLong(it.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+                                    val downloaded = it.getLong(it.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+
+                                    if (total > 0) {
+                                        val progress = (downloaded * 100L / total).toInt()
+                                        progressListener(progress)
                                     }
+                                    // 继续轮询
+                                    progressHandler?.postDelayed(this, PROGRESS_UPDATE_INTERVAL)
+                                }
+                                DownloadManager.STATUS_SUCCESSFUL -> {
+                                    progressListener(100)
+                                    // 下载完成，停止轮询
+                                    return
+                                }
+                                DownloadManager.STATUS_FAILED -> {
+                                    progressListener(-1)  // 错误
+                                    // 下载失败，停止轮询
+                                    return
+                                }
+                                else -> {
+                                    // 其他状态，继续轮询
+                                    progressHandler?.postDelayed(this, PROGRESS_UPDATE_INTERVAL)
                                 }
                             }
                         } else {
-                            // 下载任务可能已被移除
+                            // 下载任务不存在
                             progressHandler?.removeCallbacks(this)
                             Log.w(TAG, "下载任务已被移除，停止进度轮询")
                         }
