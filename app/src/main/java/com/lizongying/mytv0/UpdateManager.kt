@@ -16,23 +16,16 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.widget.Toast
-import androidx.core.content.ContextCompat
-import androidx.fragment.app.FragmentActivity
 import androidx.core.content.FileProvider
-import com.lizongying.mytv0.Utils.getUrls
+import androidx.fragment.app.FragmentActivity
+import com.lizongying.mytv0.Github
 import com.lizongying.mytv0.data.Global.gson
 import com.lizongying.mytv0.data.ReleaseResponse
 import com.lizongying.mytv0.requests.HttpClient
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import okhttp3.Request as OkHttpRequest
 import java.io.File
 import java.lang.ref.WeakReference
-import java.util.concurrent.TimeUnit
 
 class UpdateManager(
     private var context: Context,
@@ -45,6 +38,19 @@ class UpdateManager(
     private var progressRunnable: Runnable? = null
     var release: ReleaseResponse? = null
 
+    // 当前尝试的代理索引
+    private var currentProxyAttempt = 0
+    // 最大重试次数（包括代理切换）
+    private val maxRetryCount = 3
+
+    companion object {
+        private const val TAG = "UpdateManager"
+        // APK文件名 - 固定为 XHLIVE.apk
+        private const val APK_FILE_NAME = "XHLIVE.apk"
+        private const val MIME_TYPE_APK = "application/vnd.android.package-archive"
+        private const val PROGRESS_UPDATE_INTERVAL = 1000L // 1秒
+    }
+
     /* ------------------------------------------------ */
     /*  网络状态检查                                    */
     /* ------------------------------------------------ */
@@ -55,14 +61,15 @@ class UpdateManager(
     }
 
     /* ------------------------------------------------ */
-    /*  网络探测：HEAD 请求快速检查 apk_url 是否有效     */
+    /*  网络探测：HEAD 请求快速检查 URL 是否有效         */
     /* ------------------------------------------------ */
     private suspend fun probeUrl(url: String): Int {
         return withContext(Dispatchers.IO) {
             try {
+                Log.d(TAG, "探测URL: $url")
                 val req = OkHttpRequest.Builder().url(url).head().build()
                 val rsp = HttpClient.okHttpClient.newCall(req).execute()
-                rsp.code // 使用属性而不是方法
+                rsp.code
             } catch (e: Exception) {
                 Log.e(TAG, "URL探测失败: ${e.message}", e)
                 -1
@@ -71,82 +78,83 @@ class UpdateManager(
     }
 
     /* ------------------------------------------------ */
-    /*  获取版本信息（带重试机制）                      */
+    /*  获取版本信息（带重试机制和代理切换）            */
     /* ------------------------------------------------ */
-    private suspend fun getRelease(): ReleaseResponse? {
-        return withContext(Dispatchers.IO) {
+    private suspend fun getReleaseWithProxy(): ReleaseResponse? {
+        // 每次检查更新前重置代理
+        Github.resetProxy()
+        currentProxyAttempt = 0
+
+        return tryGetReleaseWithRetry()
+    }
+
+    private suspend fun tryGetReleaseWithRetry(): ReleaseResponse? {
+        var attempt = 0
+        while (attempt < maxRetryCount) {
             try {
-                Log.d(TAG, "开始获取版本信息，URL: $VERSION_URL")
+                Log.d(TAG, "尝试获取版本信息，代理: ${Github.getCurrentProxy()}, 尝试次数: ${attempt + 1}")
+
+                // 统一使用 Github.getVersionUrl() 获取带代理的URL
+                val versionUrl = Github.getVersionUrl()
+                Log.d(TAG, "请求URL: $versionUrl")
 
                 val request = OkHttpRequest.Builder()
-                    .url(VERSION_URL)
+                    .url(versionUrl)
                     .get()
                     .build()
 
                 Log.d(TAG, "请求头: ${request.headers}")
 
                 val response = HttpClient.okHttpClient.newCall(request).execute()
-
-                // 使用 response.code 属性而不是方法
                 val code = response.code
+
                 Log.d(TAG, "HTTP响应码: $code")
                 Log.d(TAG, "响应头: ${response.headers}")
 
-                if (code != 200) {
-                    Log.e(TAG, "HTTP错误: $code")
-                    return@withContext null
+                if (code == 200) {
+                    val jsonString = response.body?.string()
+
+                    if (!jsonString.isNullOrEmpty()) {
+                        Log.d(TAG, "获取到JSON响应: $jsonString")
+
+                        try {
+                            val releaseResponse = gson.fromJson(jsonString, ReleaseResponse::class.java)
+                            Log.i(TAG, "版本信息获取成功，代理: ${Github.getCurrentProxy()}, " +
+                                    "version_code=${releaseResponse.version_code}, " +
+                                    "version_name=${releaseResponse.version_name}")
+                            return releaseResponse
+                        } catch (e: Exception) {
+                            Log.e(TAG, "JSON解析失败: ${e.message}", e)
+                        }
+                    } else {
+                        Log.e(TAG, "响应体为空")
+                    }
+                } else {
+                    Log.w(TAG, "HTTP错误: $code，代理: ${Github.getCurrentProxy()}")
                 }
-
-                // 使用 response.body 属性而不是方法
-                val responseBody = response.body
-                val jsonString = responseBody?.string()
-
-                if (jsonString.isNullOrEmpty()) {
-                    Log.e(TAG, "响应体为空")
-                    return@withContext null
-                }
-
-                Log.d(TAG, "获取到JSON响应: $jsonString")
-
-                // 解析JSON
-                return@withContext try {
-                    val releaseResponse = gson.fromJson(jsonString, ReleaseResponse::class.java)
-                    Log.d(TAG, "JSON解析成功: version_code=${releaseResponse.version_code}, version_name=${releaseResponse.version_name}")
-                    releaseResponse
-                } catch (e: Exception) {
-                    Log.e(TAG, "JSON解析失败: ${e.message}", e)
-                    null
-                }
-
             } catch (e: Exception) {
-                Log.e(TAG, "获取版本信息失败: ${e.message}", e)
-                null
+                Log.e(TAG, "请求异常: ${e.message}，代理: ${Github.getCurrentProxy()}", e)
+            }
+
+            // 切换代理并重试
+            attempt++
+            if (attempt < maxRetryCount) {
+                Github.switchToNextProxy()
+                Log.w(TAG, "第${attempt}次重试，延迟1秒...")
+                delay(1000) // 延迟1秒后重试
             }
         }
-    }
 
-    /* ------------------------------------------------ */
-    /*  带重试机制的版本获取                            */
-    /* ------------------------------------------------ */
-    private suspend fun getReleaseWithRetry(retryCount: Int = 2): ReleaseResponse? {
-        repeat(retryCount) { attempt ->
-            val result = getRelease()
-            if (result != null) return result
-
-            if (attempt < retryCount - 1) {
-                Log.w(TAG, "获取版本信息失败，第${attempt + 1}次重试...")
-                delay(2000) // 延迟2秒后重试
-            }
-        }
+        Log.e(TAG, "所有代理尝试失败")
         return null
     }
 
     /* ------------------------------------------------ */
-    /*  主入口：检查 + 弹窗（含 ModifyContent）         */
+    /*  主入口：检查 + 弹窗                              */
     /* ------------------------------------------------ */
     fun checkAndUpdate() {
-        System.out.println("UpdateManager: 進入 checkAndUpdate 方法") // 強制日誌
-        Log.i(TAG, "開始檢查更新")
+        System.out.println("UpdateManager: 進入 checkAndUpdate 方法")
+        Log.i(TAG, "開始檢查更新，代理狀態: ${Github.getProxyStatus()}")
 
         if (!isNetworkAvailable()) {
             System.out.println("UpdateManager: 網絡不可用")
@@ -159,11 +167,11 @@ class UpdateManager(
             var update = false
 
             try {
-                val deferred = CoroutineScope(Dispatchers.IO).async { getReleaseWithRetry() }
+                val deferred = CoroutineScope(Dispatchers.IO).async { getReleaseWithProxy() }
                 release = deferred.await()
                 val r = release
                 if (r != null) {
-                    Log.d(TAG, "版本信息: version_code=${r.version_code}, version_name=${r.version_name}, apk_url=${r.apk_url}")
+                    Log.d(TAG, "版本信息: version_code=${r.version_code}, version_name=${r.version_name}")
 
                     if (r.version_code != null && r.version_code > versionCode) {
                         text = buildString {
@@ -213,36 +221,87 @@ class UpdateManager(
     }
 
     /* ------------------------------------------------ */
-    /*  下载：重复点击保护 + 链接失效探测               */
+    /*  下载：支持代理切换的重试机制                    */
     /* ------------------------------------------------ */
     private fun startDownload(release: ReleaseResponse) {
         if (isDownloading) {
             Toast.makeText(context, "已在下载中，请勿重复点击", Toast.LENGTH_SHORT).show()
             return
         }
-        if (release.apk_name.isNullOrEmpty() || release.apk_url.isNullOrEmpty()) {
-            Toast.makeText(context, "下载地址无效", Toast.LENGTH_SHORT).show()
+
+        // 检查版本名称是否为空
+        if (release.version_name.isNullOrEmpty()) {
+            Toast.makeText(context, "版本名称无效", Toast.LENGTH_SHORT).show()
             return
         }
 
+        // 重置代理和重试计数
+        Github.resetProxy()
+        currentProxyAttempt = 0
+
+        // 开始带重试的下载
+        attemptDownload(release)
+    }
+
+    private fun attemptDownload(release: ReleaseResponse) {
         CoroutineScope(Dispatchers.Main).launch {
-            Log.d(TAG, "开始下载探测: ${release.apk_name}, URL: ${release.apk_url}")
-            val code = probeUrl(release.apk_url)
-            if (code != 200) {
-                val errorMsg = "下载链接失效（HTTP $code）"
-                Log.e(TAG, errorMsg)
-                Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
-                return@launch
+            try {
+                // 使用固定的APK下载地址
+                val downloadUrl = Github.getApkUrl()
+
+                Log.i(TAG, "=".repeat(50))
+                Log.i(TAG, "开始下载探测")
+                Log.i(TAG, "版本名称: ${release.version_name}")
+                Log.i(TAG, "下载URL: $downloadUrl")
+                Log.i(TAG, "当前代理: ${Github.getCurrentProxy()}")
+                Log.i(TAG, "尝试次数: ${currentProxyAttempt + 1}/$maxRetryCount")
+                Log.i(TAG, "=".repeat(50))
+
+                val code = probeUrl(downloadUrl)
+                if (code != 200) {
+                    val errorMsg = "下载链接失效（HTTP $code）"
+                    Log.e(TAG, errorMsg)
+
+                    // 尝试切换代理
+                    if (currentProxyAttempt < maxRetryCount - 1) {
+                        currentProxyAttempt++
+                        Github.switchToNextProxy()
+                        Toast.makeText(context, "切换下载代理，重试中... (${currentProxyAttempt + 1}/$maxRetryCount)", Toast.LENGTH_SHORT).show()
+                        delay(1000)
+                        attemptDownload(release)
+                        return@launch
+                    } else {
+                        Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
+                        return@launch
+                    }
+                }
+
+                // 下载URL探测成功，开始实际下载
+                // 使用固定的APK文件名
+                enqueueDownload(downloadUrl, APK_FILE_NAME, release.version_name)
+
+            } catch (e: Exception) {
+                Log.e(TAG, "下载探测异常: ${e.message}", e)
+
+                // 异常情况也尝试切换代理
+                if (currentProxyAttempt < maxRetryCount - 1) {
+                    currentProxyAttempt++
+                    Github.switchToNextProxy()
+                    Toast.makeText(context, "下载异常，切换代理重试... (${currentProxyAttempt + 1}/$maxRetryCount)", Toast.LENGTH_SHORT).show()
+                    delay(1000)
+                    attemptDownload(release)
+                } else {
+                    Toast.makeText(context, "下载失败: ${e.message}", Toast.LENGTH_LONG).show()
+                }
             }
-            enqueueDownload(release)
         }
     }
 
-    private fun enqueueDownload(release: ReleaseResponse) {
+    private fun enqueueDownload(downloadUrl: String, apkFileName: String, versionName: String) {
         try {
             isDownloading = true
             val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-            val request = Request(Uri.parse(release.apk_url))
+            val request = Request(Uri.parse(downloadUrl))
 
             // 确保下载目录存在
             context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)?.mkdirs()
@@ -250,9 +309,9 @@ class UpdateManager(
             request.setDestinationInExternalFilesDir(
                 context,
                 Environment.DIRECTORY_DOWNLOADS,
-                release.apk_name
+                apkFileName
             )
-            request.setTitle("${context.getString(R.string.app_name)} ${release.version_name}")
+            request.setTitle("${context.getString(R.string.app_name)} $versionName")
             request.setDescription("正在下载新版本")
             request.setNotificationVisibility(Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             request.setAllowedOverRoaming(false)
@@ -262,17 +321,21 @@ class UpdateManager(
             request.setAllowedNetworkTypes(Request.NETWORK_WIFI or Request.NETWORK_MOBILE)
 
             val downloadId = dm.enqueue(request)
-            Log.d(TAG, "下载任务已创建, ID: $downloadId")
+            Log.i(TAG, "=".repeat(50))
+            Log.i(TAG, "下载任务已创建")
+            Log.i(TAG, "下载ID: $downloadId")
+            Log.i(TAG, "下载URL: $downloadUrl")
+            Log.i(TAG, "文件名: $apkFileName")
+            Log.i(TAG, "当前代理: ${Github.getCurrentProxy()}")
+            Log.i(TAG, "=".repeat(50))
 
             downloadReceiver = DownloadReceiver(
                 WeakReference(context),
-                release.apk_name,
+                apkFileName,
                 downloadId
             )
 
-            // 修复：使用条件编译处理不同Android版本的广播注册
             registerDownloadReceiverWithFlags()
-
             getDownloadProgress(context, downloadId) { progress ->
                 Log.i(TAG, "下载进度: $progress%")
             }
@@ -521,13 +584,6 @@ class UpdateManager(
     /* ------------------------------------------------ */
     /*  生命周期 & 回调                               */
     /* ------------------------------------------------ */
-    companion object {
-        private const val TAG = "UpdateManager"
-        private const val VERSION_URL = "https://xhys.lcjly.cn/update/XHlive.json"
-        private const val MIME_TYPE_APK = "application/vnd.android.package-archive"
-        private const val PROGRESS_UPDATE_INTERVAL = 1000L // 1秒
-    }
-
     override fun onConfirm() {
         Log.d(TAG, "用户确认更新")
         release?.let { startDownload(it) }
@@ -563,3 +619,6 @@ class UpdateManager(
         isDownloading = false
     }
 }
+
+// 扩展函数用于字符串重复
+private operator fun String.times(count: Int): String = this.repeat(count)
