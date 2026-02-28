@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">星輝直播</string>
+    <string name="app_name">XHlive</string>
     <string name="title_channel_reversal">Channel Reversal</string>
     <string name="title_channel_num">Show Channel Number When Switching</string>
     <string name="check_version">Check for Updates</string>
