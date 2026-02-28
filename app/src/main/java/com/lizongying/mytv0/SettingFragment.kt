@@ -420,20 +420,24 @@ class SettingFragment : Fragment() {
         val context = requireContext()
         val permissionsList = mutableListOf<String>()
 
+        // 強制打印到 System.out，這在所有日誌級別都可見
+        System.out.println("SettingFragment: 點擊了更新按鈕")
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
+            // 安卓 8.0+ 安裝權限
             permissionsList.add(Manifest.permission.REQUEST_INSTALL_PACKAGES)
         }
 
+        // 暫時註釋掉存儲權限檢查，直接運行更新邏輯來測試網絡
+        /*
         checkAndAddPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE, permissionsList)
         checkAndAddPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE, permissionsList)
+        */
 
         if (permissionsList.isNotEmpty()) {
-            Log.i(TAG, "ask $permissionsList")
-            ActivityCompat.requestPermissions(
-                requireActivity(),
-                permissionsList.toTypedArray(),
-                PERMISSIONS_REQUEST_CODE
-            )
+            Log.i(TAG, "申請權限: $permissionsList")
+            // 如果是電視盒子，建議這裡直接跳轉到系統設置頁面，而不是用 requestPermissions
+            updateManager.checkAndUpdate() // 建議先直接調用，看網絡通不通
         } else {
             updateManager.checkAndUpdate()
         }

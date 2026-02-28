@@ -145,10 +145,12 @@ class UpdateManager(
     /*  主入口：检查 + 弹窗（含 ModifyContent）         */
     /* ------------------------------------------------ */
     fun checkAndUpdate() {
-        Log.i(TAG, "开始检查更新")
+        System.out.println("UpdateManager: 進入 checkAndUpdate 方法") // 強制日誌
+        Log.i(TAG, "開始檢查更新")
 
         if (!isNetworkAvailable()) {
-            Toast.makeText(context, "网络不可用，请检查网络连接", Toast.LENGTH_SHORT).show()
+            System.out.println("UpdateManager: 網絡不可用")
+            Toast.makeText(context, "網絡不可用", Toast.LENGTH_SHORT).show()
             return
         }
 
