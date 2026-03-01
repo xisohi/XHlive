@@ -4,8 +4,12 @@ import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import androidx.core.content.FileProvider
 import androidx.fragment.app.FragmentActivity
 import com.lizongying.mytv0.data.Global.gson
 import com.lizongying.mytv0.data.ReleaseResponse
@@ -17,6 +21,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.BufferedOutputStream
 import java.io.File
 import java.io.IOException
 
@@ -30,9 +35,11 @@ class UpdateManager(
     private var lastLoggedProgress = -1
 
     private var release: ReleaseResponse? = null
-    private var hasUpdate = false // 新增：标记是否有更新
+    private var hasUpdate = false
 
-    /* ========== 权限和网络检查 ========== */
+    // 从 Github 获取文件名
+    private val apkFileName = Github.APK_FILE_NAME
+
     private fun hasWritePermission(): Boolean {
         return Environment.getExternalStorageState() == Environment.MEDIA_MOUNTED
     }
@@ -43,35 +50,29 @@ class UpdateManager(
         return connectivityManager?.activeNetworkInfo?.isConnected == true
     }
 
-    /* ========== 获取下载目录 ========== */
+    /**
+     * 获取下载目录 - 使用系统标准下载目录
+     */
     private fun getDownloadDirectory(): File {
-        return if (Environment.MEDIA_MOUNTED == Environment.getExternalStorageState()) {
-            context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-                ?: File(context.filesDir, "downloads")
-        } else {
-            File(context.filesDir, "downloads")
-        }.apply {
+        // 使用系统标准下载目录 /sdcard/Download/，更可靠
+        return File(Environment.getExternalStorageDirectory(), "Download").apply {
             if (!exists()) {
-                mkdirs()
+                val created = mkdirs()
+                Log.i(TAG, "创建下载目录: $created, 路径: $absolutePath")
             }
         }
     }
 
-    /* ========== 启动时清理APK文件 ========== */
     fun cleanupApkFilesOnStart() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val downloadDir = getDownloadDirectory()
-                val deletedFiles = cleanupDownloadDirectory(downloadDir, APK_NAME_PREFIX)
+                val deletedFiles = cleanupDownloadDirectory(downloadDir)
 
                 if (deletedFiles.isNotEmpty()) {
                     Log.i(TAG, "Cleaned up ${deletedFiles.size} APK files on app start")
                     withContext(Dispatchers.Main) {
-                        if (deletedFiles.size == 1) {
-                            "已清理残留安装包".showToast()
-                        } else {
-                            "已清理 ${deletedFiles.size} 个残留安装包".showToast()
-                        }
+                        "已清理残留安装包".showToast()
                     }
                 }
             } catch (e: Exception) {
@@ -80,11 +81,9 @@ class UpdateManager(
         }
     }
 
-    /* ========== 获取升级信息 ========== */
     private suspend fun getRelease(): ReleaseResponse? {
         return withContext(Dispatchers.IO) {
             try {
-                // 检查网络连接
                 if (!isNetworkAvailable()) {
                     withContext(Dispatchers.Main) {
                         "网络不可用，请检查网络连接".showToast()
@@ -92,13 +91,21 @@ class UpdateManager(
                     return@withContext null
                 }
 
+                val versionUrl = Github.getVersionUrl()
+                Log.i(TAG, "Checking version from: $versionUrl")
+
                 val request = okhttp3.Request.Builder()
-                    .url(VERSION_URL)
+                    .url(versionUrl)
                     .build()
 
                 HttpClient.okHttpClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
                         Log.e(TAG, "HTTP error: ${response.code()}")
+
+                        if (response.code() == 404 || response.code() >= 500) {
+                            Log.w(TAG, "Current proxy failed, trying next proxy...")
+                            Github.switchToNextProxy()
+                        }
                         return@withContext null
                     }
                     response.bodyAlias()?.let {
@@ -108,6 +115,12 @@ class UpdateManager(
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "getRelease", e)
+
+                if (e is IOException) {
+                    Log.w(TAG, "Network error, switching to next proxy...")
+                    Github.switchToNextProxy()
+                }
+
                 withContext(Dispatchers.Main) {
                     "版本检查失败: ${e.message}".showToast()
                 }
@@ -116,15 +129,15 @@ class UpdateManager(
         }
     }
 
-    /* ========== 主入口：检查并弹窗 ========== */
     fun checkAndUpdate() {
         Log.i(TAG, "checkAndUpdate")
 
-        // 检查存储权限
         if (!hasWritePermission()) {
             "无存储权限，无法下载更新".showToast()
             return
         }
+
+        Github.resetProxy()
 
         CoroutineScope(Dispatchers.Main).launch {
             var text = "版本获取失败"
@@ -137,16 +150,15 @@ class UpdateManager(
                     if (r.version_code > versionCode) {
                         text = buildString {
                             append("发现新版本：${r.version_name}")
-                            // 使用正确的字段名：modifyContent（首字母小写）
                             if (!r.modifyContent.isNullOrBlank()) {
                                 append("\n\n📋 升级内容：\n${r.modifyContent}")
                             }
                         }
                         update = true
-                        hasUpdate = true // 设置标记为有更新
+                        hasUpdate = true
                     } else {
                         text = "已是最新版本，不需要更新"
-                        hasUpdate = false // 设置标记为无更新
+                        hasUpdate = false
                     }
                 }
             } catch (e: Exception) {
@@ -158,7 +170,6 @@ class UpdateManager(
         }
     }
 
-    /* ========== 弹窗 ========== */
     private fun updateUI(text: String, update: Boolean) {
         try {
             val dialog = ConfirmationFragment(this@UpdateManager, text, update)
@@ -168,14 +179,7 @@ class UpdateManager(
         }
     }
 
-    /* ========== 下载相关 ========== */
     private fun startDownload(release: ReleaseResponse) {
-        if (release.apk_name.isNullOrEmpty() || release.apk_url.isNullOrEmpty()) {
-            "下载信息不完整".showToast()
-            return
-        }
-
-        // 再次检查权限和网络
         if (!hasWritePermission()) {
             "无存储权限，无法下载".showToast()
             return
@@ -187,78 +191,169 @@ class UpdateManager(
         }
 
         val downloadDir = getDownloadDirectory()
-        cleanupDownloadDirectory(downloadDir, APK_NAME_PREFIX)
-        val file = File(downloadDir, release.apk_name)
 
-        Log.i(TAG, "save dir $file")
+        // 清理旧文件（包括临时文件）
+        cleanupDownloadDirectory(downloadDir)
+
+        val file = File(downloadDir, apkFileName)
+        Log.i(TAG, "准备下载到: ${file.absolutePath}")
+
+        val acceleratedApkUrl = Github.getApkUrl()
+        Log.i(TAG, "下载URL: $acceleratedApkUrl")
+
         downloadJob = GlobalScope.launch(Dispatchers.IO) {
-            downloadWithRetry(release.apk_url, file)
+            downloadWithRetry(acceleratedApkUrl, file)
         }
     }
 
-    private fun cleanupDownloadDirectory(directory: File?, apkNamePrefix: String): List<String> {
+    /**
+     * 清理下载目录 - 只删除临时文件和旧版本
+     */
+    private fun cleanupDownloadDirectory(directory: File?): List<String> {
         val deletedFiles = mutableListOf<String>()
-        directory?.listFiles()?.forEach {
-            if (it.name.startsWith(apkNamePrefix) && it.name.endsWith(".apk")) {
-                if (it.delete()) {
-                    Log.i(TAG, "Deleted old APK: ${it.name}")
-                    deletedFiles.add(it.name)
-                } else {
-                    Log.e(TAG, "Failed to delete old APK: ${it.name}")
+        directory?.listFiles()?.forEach { f ->
+            // 删除临时文件和任何旧的APK文件
+            if (f.name.endsWith(".tmp") || f.name.contains("XHlive") && f.name.endsWith(".apk")) {
+                if (f.delete()) {
+                    Log.i(TAG, "清理文件: ${f.name}")
+                    deletedFiles.add(f.name)
                 }
             }
         }
         return deletedFiles
     }
 
-    private suspend fun downloadWithRetry(url: String, file: File, maxRetries: Int = 3) {
+    private suspend fun downloadWithRetry(url: String, file: File, maxRetries: Int = PROXY_RETRY_COUNT) {
         var retries = 0
+        var currentUrl = url
+
+        Log.i(TAG, "开始下载，代理: ${Github.getCurrentProxy()}")
+
         while (retries < maxRetries) {
             try {
-                downloadFile(url, file)
+                downloadFile(currentUrl, file)
+                Log.i(TAG, "下载成功完成")
                 break
             } catch (e: IOException) {
-                Log.e(TAG, "Download failed: ${e.message}")
+                Log.e(TAG, "下载失败 (尝试 ${retries + 1}/$maxRetries): ${e.message}")
                 retries++
+
                 if (retries >= maxRetries) {
+                    Log.e(TAG, "所有代理均失败")
                     withContext(Dispatchers.Main) {
-                        updateUI("下载失败，请检查网络连接后重试", false)
+                        updateUI("下载失败，请检查网络后重试", false)
                     }
                 } else {
-                    Log.i(TAG, "Retrying download ($retries/$maxRetries)")
+                    Github.switchToNextProxy()
+                    currentUrl = Github.getApkUrl()
+
+                    Log.i(TAG, "切换代理: ${Github.getCurrentProxy()}")
+
                     withContext(Dispatchers.Main) {
-                        "下载失败，${30 - (retries * 10)}秒后重试 ($retries/$maxRetries)".showToast()
+                        "下载失败，切换代理重试 ($retries/$maxRetries)".showToast()
                     }
-                    delay(30000L - (retries * 10000L)) // 递减重试间隔
+
+                    delay(RETRY_DELAY_BASE * retries)
                 }
             }
         }
     }
 
+    /**
+     * 下载文件 - 使用临时文件确保完整性
+     */
     private suspend fun downloadFile(url: String, file: File) {
+        Log.i(TAG, "========== 开始下载 ==========")
+        Log.i(TAG, "目标文件: ${file.absolutePath}")
+
         val request = okhttp3.Request.Builder()
             .url(url)
             .addHeader("Accept", "application/vnd.android.package-archive")
             .build()
+
         val response = okHttpClient.newCall(request).execute()
-        if (!response.isSuccessful) throw IOException("Unexpected code ${response.code()}")
+        if (!response.isSuccessful) {
+            throw IOException("HTTP错误: ${response.code()}")
+        }
 
-        val body = response.bodyAlias() ?: throw IOException("Null response body")
+        val body = response.bodyAlias() ?: throw IOException("响应体为空")
         val contentLength = body.contentLength()
-        var bytesRead = 0L
+        Log.i(TAG, "文件大小: $contentLength bytes")
 
-        body.byteStream().use { input ->
-            file.outputStream().use { output ->
-                val buffer = ByteArray(BUFFER_SIZE)
-                var bytes: Int
-                while (input.read(buffer).also { bytes = it } != -1) {
-                    output.write(buffer, 0, bytes)
-                    bytesRead += bytes
-                    val progress =
-                        if (contentLength > 0) (bytesRead * 100 / contentLength).toInt() else -1
-                    withContext(Dispatchers.Main) { updateDownloadProgress(progress) }
+        var bytesRead = 0L
+        val startTime = System.currentTimeMillis()
+
+        // 使用临时文件下载
+        val tempFile = File(file.parent, "${file.name}.tmp")
+
+        try {
+            body.byteStream().use { input ->
+                BufferedOutputStream(tempFile.outputStream()).use { output ->
+                    val buffer = ByteArray(BUFFER_SIZE)
+                    var bytes: Int
+                    var lastProgress = -1
+
+                    while (input.read(buffer).also { bytes = it } != -1) {
+                        output.write(buffer, 0, bytes)
+                        bytesRead += bytes
+
+                        // 每10%报告一次进度
+                        val progress = if (contentLength > 0) {
+                            (bytesRead * 100 / contentLength).toInt()
+                        } else -1
+
+                        if (progress != lastProgress && progress % 10 == 0) {
+                            lastProgress = progress
+                            withContext(Dispatchers.Main) {
+                                updateDownloadProgress(progress)
+                            }
+                        }
+                    }
+
+                    // 关键：强制刷新到磁盘
+                    output.flush()
                 }
             }
+
+            val downloadTime = System.currentTimeMillis() - startTime
+            Log.i(TAG, "下载完成: $bytesRead bytes, 耗时: ${downloadTime}ms")
+
+            // 验证临时文件
+            if (!tempFile.exists()) {
+                throw IOException("临时文件不存在")
+            }
+            if (tempFile.length() == 0L) {
+                throw IOException("临时文件为空")
+            }
+            Log.i(TAG, "临时文件验证通过: ${tempFile.length()} bytes")
+
+            // 删除旧文件
+            if (file.exists()) {
+                val deleted = file.delete()
+                Log.i(TAG, "删除旧文件: $deleted")
+            }
+
+            // 重命名为正式文件
+            val renamed = tempFile.renameTo(file)
+            if (!renamed) {
+                throw IOException("重命名失败: ${tempFile.absolutePath} -> ${file.absolutePath}")
+            }
+
+            // 最终验证
+            Log.i(TAG, "========== 下载验证 ==========")
+            Log.i(TAG, "文件存在: ${file.exists()}")
+            Log.i(TAG, "文件大小: ${file.length()} bytes")
+            Log.i(TAG, "文件可读: ${file.canRead()}")
+            Log.i(TAG, "文件路径: ${file.absolutePath}")
+
+            if (!file.exists() || file.length() == 0L) {
+                throw IOException("最终文件验证失败")
+            }
+
+        } catch (e: Exception) {
+            // 清理临时文件
+            tempFile.delete()
+            throw e
         }
 
         withContext(Dispatchers.Main) {
@@ -269,108 +364,171 @@ class UpdateManager(
 
     private fun updateDownloadProgress(progress: Int) {
         if (progress == -1) {
-            Log.i(TAG, "Download in progress, size unknown")
-        } else if (progress % 10 == 0 && progress != lastLoggedProgress) {
+            Log.i(TAG, "下载中，大小未知")
+        } else if (progress != lastLoggedProgress) {
             lastLoggedProgress = progress
-            Log.i(TAG, "Download progress: $progress%")
-            "升级文件已经下载：${progress}%".showToast()
+            Log.i(TAG, "下载进度: $progress%")
+            if (progress % 10 == 0) {
+                "升级文件已下载: $progress%".showToast()
+            }
         }
     }
 
+    /**
+     * 安装新版本 - 支持 API 19+（非协程函数）
+     */
     private fun installNewVersion(apkFile: File) {
+        Log.i(TAG, "========== 开始安装 ==========")
+        Log.i(TAG, "APK路径: ${apkFile.absolutePath}")
+        Log.i(TAG, "APK存在: ${apkFile.exists()}")
+        Log.i(TAG, "APK大小: ${apkFile.length()} bytes")
+        Log.i(TAG, "API级别: ${Build.VERSION.SDK_INT}")
+
         if (!apkFile.exists()) {
-            Log.e(TAG, "APK file does not exist!")
+            Log.e(TAG, "APK文件不存在!")
             "安装文件不存在".showToast()
             return
         }
 
+        if (apkFile.length() < 10000) {
+            Log.e(TAG, "APK文件过小，可能损坏: ${apkFile.length()} bytes")
+            "安装包损坏，请重新下载".showToast()
+            return
+        }
+
         try {
-            val apkUri = Uri.fromFile(apkFile)
-            Log.i(TAG, "apkUri $apkUri")
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(apkUri, "application/vnd.android.package-archive")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val intent = Intent(Intent.ACTION_VIEW)
+            val apkUri: Uri
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                // API 24+ 使用 FileProvider
+                apkUri = FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    apkFile
+                )
+                intent.setDataAndType(apkUri, "application/vnd.android.package-archive")
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                Log.i(TAG, "使用FileProvider: $apkUri")
+            } else {
+                // API 19-23 使用 file://
+                apkUri = Uri.fromFile(apkFile)
+                intent.setDataAndType(apkUri, "application/vnd.android.package-archive")
+                // API 19也需要这个标志
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                Log.i(TAG, "使用file协议: $apkUri")
             }
 
-            context.startActivity(intent)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
-            // 启动安装后清理任务（可选）
+            // 检查是否有应用能处理
+            val activities = context.packageManager.queryIntentActivities(intent, 0)
+            Log.i(TAG, "找到 ${activities.size} 个安装器")
+
+            activities.forEachIndexed { index, info ->
+                Log.i(TAG, "  [$index] ${info.activityInfo.packageName}/${info.activityInfo.name}")
+            }
+
+            if (activities.isNotEmpty()) {
+                // 使用第一个
+                val first = activities[0].activityInfo
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+                    // API 19-23 显式设置组件
+                    intent.setClassName(first.packageName, first.name)
+                }
+
+                Log.i(TAG, "启动安装器: ${first.packageName}/${first.name}")
+                context.startActivity(intent)
+                Log.i(TAG, "安装意图已发送")
+            } else {
+                Log.e(TAG, "没有找到安装器")
+                throw IOException("未找到系统安装器")
+            }
+
+            // 延迟清理
             startPostInstallCleanup(apkFile)
 
         } catch (e: Exception) {
-            Log.e(TAG, "Install failed", e)
-            "安装失败，请检查是否允许安装未知来源应用".showToast()
+            Log.e(TAG, "安装失败", e)
+
+            // 降级方案：提示手动安装（使用Handler切换到主线程）
+            val path = apkFile.absolutePath
+            val message = """
+                自动安装失败，请手动安装：
+                
+                路径: $path
+                
+                方法：
+                1. 打开文件管理器
+                2. 进入 Download 目录
+                3. 点击 $apkFileName 安装
+                """.trimIndent()
+
+            Handler(Looper.getMainLooper()).post {
+                message.showToast()
+            }
         }
     }
 
-    /* ========== 安装后清理（备用方案） ========== */
     private fun startPostInstallCleanup(apkFile: File) {
         CoroutineScope(Dispatchers.IO).launch {
-            // 等待一段时间后检查并删除APK（如果用户回到应用）
             delay(POST_INSTALL_CLEANUP_DELAY)
 
             if (apkFile.exists()) {
-                Log.i(TAG, "Performing post-install cleanup for: ${apkFile.name}")
+                Log.i(TAG, "清理APK: ${apkFile.name}")
                 if (apkFile.delete()) {
-                    Log.i(TAG, "Post-install cleanup successful: ${apkFile.name}")
+                    Log.i(TAG, "清理成功")
                 } else {
-                    Log.w(TAG, "Post-install cleanup failed, will clean on next app start: ${apkFile.name}")
+                    Log.w(TAG, "清理失败，下次启动时清理")
                 }
             }
         }
     }
 
-    /* ========== 手动清理APK文件 ========== */
     fun cleanupApkFiles() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val downloadDir = getDownloadDirectory()
-                val deletedFiles = cleanupDownloadDirectory(downloadDir, APK_NAME_PREFIX)
+                val deletedFiles = cleanupDownloadDirectory(downloadDir)
 
                 withContext(Dispatchers.Main) {
                     if (deletedFiles.isNotEmpty()) {
-                        "已清理 ${deletedFiles.size} 个安装包文件".showToast()
+                        "已清理 ${deletedFiles.size} 个文件".showToast()
                     } else {
-                        "没有需要清理的安装包".showToast()
+                        "没有需要清理的文件".showToast()
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error cleaning up APK files", e)
+                Log.e(TAG, "清理失败", e)
                 withContext(Dispatchers.Main) {
-                    "清理安装包失败".showToast()
+                    "清理失败".showToast()
                 }
             }
         }
     }
 
-    /* ========== 接口回调 ========== */
     override fun onConfirm() {
-        // 只有在有更新的情况下才下载
         if (hasUpdate) {
             release?.let { startDownload(it) }
         } else {
-            // 没有更新时，点击确认只是关闭对话框
-            Log.i(TAG, "User confirmed no update available")
+            Log.i(TAG, "用户确认，无更新")
         }
     }
 
     override fun onCancel() {
-        Log.i(TAG, "User canceled update")
+        Log.i(TAG, "用户取消更新")
     }
 
     fun destroy() {
         downloadJob?.cancel()
-        Log.i(TAG, "UpdateManager destroyed")
+        Log.i(TAG, "UpdateManager销毁")
     }
 
     companion object {
         private const val TAG = "UpdateManager"
         private const val BUFFER_SIZE = 8192
-        private const val VERSION_URL =
-            "https://xhys.lcjly.cn/update/XHlive-kitkat.json"
-
-        // APK文件相关常量
-        private const val APK_NAME_PREFIX = "XHlive-kitkat"
-        private const val POST_INSTALL_CLEANUP_DELAY = 60000L // 60秒后清理
+        private const val POST_INSTALL_CLEANUP_DELAY = 60000L
+        private const val PROXY_RETRY_COUNT = 5
+        private const val RETRY_DELAY_BASE = 3000L
     }
 }

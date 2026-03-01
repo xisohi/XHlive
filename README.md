@@ -55,7 +55,10 @@
       }
     ]
     ```
-
+  sources.txt格式：
+  ```
+  name:测试源(必填）,uri:https://example.com/test.txt(必填）,ua:okHttp/Mod-1.5.0.0(选填）,referrer:https://www.example.com/(选填）
+  ```
 推薦配合使用 [my-tv-server](https://github.com/lizongying/my-tv-server)
 
 下載安裝 [releases](https://github.com/xisohi/XHlive/releases/)

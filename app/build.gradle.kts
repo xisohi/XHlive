@@ -13,13 +13,14 @@ android {
         applicationId = "com.lizongying.mytv0"
         minSdk = 19
         targetSdk = 35
-        versionCode = getVersionCode()
-        versionName = getVersionName()
+        versionCode = 1
+        versionName = "1.0"
         multiDexEnabled = true
     }
 
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 
     buildTypes {
@@ -42,31 +43,6 @@ android {
     }
     kotlinOptions {
         jvmTarget = "1.8"
-    }
-}
-
-fun getTag(): String {
-    return try {
-        val process = Runtime.getRuntime().exec("git describe --tags --always")
-        process.waitFor()
-        process.inputStream.bufferedReader().use(BufferedReader::readText).trim().removePrefix("v")
-    } catch (_: Exception) {
-        ""
-    }
-}
-
-fun getVersionCode(): Int {
-    return try {
-        val arr = (getTag().replace(".", " ").replace("-", " ") + " 0").split(" ")
-        arr[0].toInt() * 1000000 + arr[1].toInt() * 10000 + arr[2].toInt() * 100 + arr[3].toInt()
-    } catch (_: Exception) {
-        1
-    }
-}
-
-fun getVersionName(): String {
-    return getTag().ifEmpty {
-        "0.0.0-1"
     }
 }
 

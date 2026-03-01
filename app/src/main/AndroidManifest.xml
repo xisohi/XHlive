@@ -14,6 +14,7 @@
         android:theme="@style/Theme.MyTV0"
         android:usesCleartextTraffic="true"
         android:enableOnBackInvokedCallback="false">
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -21,11 +22,11 @@
             android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
         <receiver
             android:name=".BootReceiver"
             android:exported="true">
@@ -34,11 +35,23 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </receiver>
+
         <provider
             android:name=".InitializerProvider"
             android:authorities="${applicationId}.InitializerProvider"
             android:exported="false"
             android:initOrder="900" />
+
+        <!-- FileProvider for API 24+ (Android 7.0+) -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
     <uses-feature
@@ -53,6 +66,7 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- 安装未知应用权限（API 26+ 需要，API 19-25 只需在设置中开启） -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
