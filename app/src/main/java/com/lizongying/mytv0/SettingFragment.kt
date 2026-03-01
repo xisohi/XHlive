@@ -49,7 +49,7 @@ class SettingFragment : Fragment() {
 
         _binding = SettingBinding.inflate(inflater, container, false)
 
-        binding.versionName.text = "v${context.appVersionName}"
+        binding.versionName.text = "v${BuildConfig.VERSION_NAME}"
         binding.version.text = "https://github.com/xisohi/XHlive"
 
         val switchChannelReversal = _binding?.switchChannelReversal
