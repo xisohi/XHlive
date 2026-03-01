@@ -34,8 +34,6 @@ class SettingFragment : Fragment() {
 
     private lateinit var uri: Uri
 
-    private lateinit var updateManager: UpdateManager
-
     private var server = "http://${PortUtil.lan()}:$PORT"
 
     private lateinit var viewModel: MainViewModel
@@ -276,9 +274,6 @@ class SettingFragment : Fragment() {
                 }
             }
         }
-
-        updateManager = UpdateManager(context, context.appVersionCode)
-
         return binding.root
     }
 
@@ -435,7 +430,7 @@ class SettingFragment : Fragment() {
                 PERMISSIONS_REQUEST_CODE
             )
         } else {
-            updateManager.checkAndUpdate()
+            (requireActivity().application as MyTVApplication).checkForUpdates()
         }
     }
 
@@ -478,7 +473,7 @@ class SettingFragment : Fragment() {
                 }
             }
             if (allPermissionsGranted) {
-                updateManager.checkAndUpdate()
+                (requireActivity().application as MyTVApplication).checkForUpdates()
             } else {
                 Log.w(TAG, "ask permissions failed")
                 R.string.authorization_failed.showToast()
