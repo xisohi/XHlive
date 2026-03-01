@@ -13,7 +13,6 @@ import androidx.recyclerview.widget.RecyclerView
 import com.lizongying.mytv0.data.Source
 import com.lizongying.mytv0.databinding.SourcesItemBinding
 import com.lizongying.mytv0.models.Sources
-import java.util.Locale
 
 class SourcesAdapter(
     private val context: Context,
@@ -125,8 +124,8 @@ class SourcesAdapter(
                 false
             }
 
-            viewHolder.bindNum("%02d".format(position + 1))  // 从1开始显示
-            viewHolder.bindTitle(source)
+            viewHolder.bindNum("%02d".format(position + 1))
+            viewHolder.bindTitle(source)  // 传入整个source对象
         }
     }
 
@@ -139,29 +138,24 @@ class SourcesAdapter(
         }
 
         fun bindTitle(source: Source) {
-            // 优先使用 name，如果没有则自动从 URI 识别
+            // 优先使用 name 字段显示
             val displayName = if (source.name.isNotEmpty()) {
                 source.name
             } else {
-                getNameFromUri(source.uri)
+                // 如果没有name，则从URI生成一个名称
+                try {
+                    val uri = android.net.Uri.parse(source.uri)
+                    val lastPathSegment = uri.lastPathSegment
+                    if (!lastPathSegment.isNullOrEmpty()) {
+                        lastPathSegment.substringBeforeLast(".").ifEmpty { uri.host ?: source.uri }
+                    } else {
+                        uri.host ?: source.uri
+                    }
+                } catch (e: Exception) {
+                    source.uri.substringAfterLast("/").substringBefore("?").ifEmpty { source.uri }
+                }
             }
             binding.title.text = displayName
-        }
-
-        private fun getNameFromUri(uri: String): String {
-            return try {
-                val androidUri = android.net.Uri.parse(uri)
-                val lastPathSegment = androidUri.lastPathSegment
-                if (!lastPathSegment.isNullOrEmpty()) {
-                    // 去除文件扩展名
-                    lastPathSegment.substringBeforeLast(".").ifEmpty { androidUri.host ?: uri }
-                } else {
-                    androidUri.host ?: uri
-                }
-            } catch (e: Exception) {
-                // 如果URI解析失败，返回原始URI的简化版本
-                uri.substringAfterLast("/").substringBefore("?").ifEmpty { uri }
-            }
         }
 
         fun focus(hasFocus: Boolean) {
