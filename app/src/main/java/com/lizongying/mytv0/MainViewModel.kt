@@ -36,7 +36,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
 
-
 class MainViewModel : ViewModel() {
     private var timeFormat = if (SP.displaySeconds) "HH:mm:ss" else "HH:mm"
 
@@ -254,7 +253,6 @@ class MainViewModel : ViewModel() {
                         Log.e(TAG, "EPG $a ${response.codeAlias()}")
                     }
                 } catch (e: Exception) {
-//                    Log.e(TAG, "EPG $a error", e)
                     Log.e(TAG, "EPG $a error")
                 }
             }
@@ -267,7 +265,8 @@ class MainViewModel : ViewModel() {
         return success
     }
 
-    private suspend fun importFromUrl(url: String, id: String = "") {
+    // 修改后的 importFromUrl 方法，支持 ua 和 referrer
+    private suspend fun importFromUrl(url: String, id: String = "", ua: String = "", referrer: String = "") {
         val urls = getUrls(url).map { Pair(it, url) }
 
         var err = 0
@@ -276,7 +275,17 @@ class MainViewModel : ViewModel() {
             Log.i(TAG, "request $a")
             withContext(Dispatchers.IO) {
                 try {
-                    val request = okhttp3.Request.Builder().url(a).build()
+                    val requestBuilder = okhttp3.Request.Builder().url(a)
+
+                    // 添加自定义 UA 和 Referrer
+                    if (ua.isNotEmpty()) {
+                        requestBuilder.addHeader("User-Agent", ua)
+                    }
+                    if (referrer.isNotEmpty()) {
+                        requestBuilder.addHeader("Referer", referrer)
+                    }
+
+                    val request = requestBuilder.build()
                     val response = HttpClient.okHttpClient.newCall(request).execute()
 
                     if (response.isSuccessful) {
@@ -325,7 +334,8 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    fun importFromUri(uri: Uri, id: String = "") {
+    // 修改后的 importFromUri 方法，支持 ua 和 referrer
+    fun importFromUri(uri: Uri, id: String = "", ua: String = "", referrer: String = "") {
         if (uri.scheme == "file") {
             val file = uri.toFile()
             Log.i(TAG, "file $file")
@@ -339,7 +349,7 @@ class MainViewModel : ViewModel() {
             tryStr2Channels(str, file, uri.toString(), id)
         } else {
             viewModelScope.launch {
-                importFromUrl(uri.toString(), id)
+                importFromUrl(uri.toString(), id, ua, referrer)
             }
         }
     }
@@ -357,9 +367,7 @@ class MainViewModel : ViewModel() {
                         id = id,
                         uri = url
                     )
-                    sources.addSource(
-                        source
-                    )
+                    sources.addSource(source)
                 }
                 _channelsOk.value = true
                 R.string.channel_import_success.showToast()

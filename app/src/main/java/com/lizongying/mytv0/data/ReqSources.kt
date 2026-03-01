@@ -7,4 +7,7 @@ data class ReqSources(
 data class ReqSourceAdd(
     val id: String,
     var uri: String,
+    val name: String = "",  // 新增 name 字段
+    val ua: String = "",  // 新增 UA 字段
+    val referrer: String = ""  // 新增 referrer 字段
 )

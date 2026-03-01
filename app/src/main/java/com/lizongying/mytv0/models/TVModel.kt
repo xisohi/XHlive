@@ -2,6 +2,7 @@ package com.lizongying.mytv0.models
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -22,6 +23,7 @@ import com.lizongying.mytv0.data.EPG
 import com.lizongying.mytv0.data.MulticastLockManager
 import com.lizongying.mytv0.data.Program
 import com.lizongying.mytv0.data.RtpDataSourceFactory
+import com.lizongying.mytv0.data.Source
 import com.lizongying.mytv0.data.SourceType
 import com.lizongying.mytv0.data.TV
 import kotlin.math.max
@@ -31,15 +33,23 @@ class TVModel(var tv: TV) : ViewModel() {
     private var appContext: Context? = null
     private var multicastLockManager: MulticastLockManager? = null
 
+    // 新增：当前源的信息（包含UA和Referrer）
+    private var currentSource: Source? = null
+
     fun setContext(context: Context) {
         this.appContext = context.applicationContext
         this.multicastLockManager = MulticastLockManager(context.applicationContext)
     }
 
-    // 🆕 释放组播锁（切换频道或销毁时调用）
+    // 新增：设置当前源
+    fun setCurrentSource(source: Source?) {
+        this.currentSource = source
+    }
+
     fun releaseMulticastLock() {
         multicastLockManager?.release()
     }
+
     var retryTimes = 0
     var retryMaxTimes = 10
     var programUpdateTime = 0L
@@ -125,6 +135,7 @@ class TVModel(var tv: TV) : ViewModel() {
     }
 
     private var userAgent = ""
+    private var referrer = ""
 
     private var _httpDataSource: DataSource.Factory? = null
     private var _mediaItem: MediaItem? = null
@@ -136,37 +147,64 @@ class TVModel(var tv: TV) : ViewModel() {
             val path = uri.path ?: return@let null
             val scheme = uri.scheme ?: return@let null
 
-//        val okHttpDataSource = OkHttpDataSource.Factory(HttpClient.okHttpClient)
-//        httpDataSource = okHttpDataSource
-
             IgnoreSSLCertificate.ignore()
             val defaultHttpDataSource = DefaultHttpDataSource.Factory()
             defaultHttpDataSource.setKeepPostFor302Redirects(true)
             defaultHttpDataSource.setAllowCrossProtocolRedirects(true)
-            tv.headers?.let { i ->
-                defaultHttpDataSource.setDefaultRequestProperties(i)
-                i.forEach { (key, value) ->
-                    if (key.equals("user-agent", ignoreCase = true)) {
-                        userAgent = value
-                        return@forEach
+
+            // 构建请求头
+            val headers = mutableMapOf<String, String>()
+
+            // 优先使用当前源的headers
+            currentSource?.let { source ->
+                if (source.ua.isNotEmpty()) {
+                    headers["User-Agent"] = source.ua
+                    userAgent = source.ua
+                    Log.d(TAG, "Using UA from source: ${source.ua}") // 添加调试日志
+                }
+                if (source.referrer.isNotEmpty()) {
+                    headers["Referer"] = source.referrer
+                    referrer = source.referrer
+                    Log.d(TAG, "Using Referrer from source: ${source.referrer}") // 添加调试日志
+                }
+            }
+
+            // 如果TV有自己的headers，合并进去
+            tv.headers?.let { tvHeaders ->
+                tvHeaders.forEach { (key, value) ->
+                    if (!headers.containsKey(key)) {
+                        headers[key] = value
+                        when {
+                            key.equals("user-agent", ignoreCase = true) -> {
+                                userAgent = value
+                                Log.d(TAG, "Using UA from TV: $value")
+                            }
+                            key.equals("referer", ignoreCase = true) || key.equals("referrer", ignoreCase = true) -> {
+                                referrer = value
+                                Log.d(TAG, "Using Referrer from TV: $value")
+                            }
+                        }
                     }
                 }
             }
 
+            // 设置所有请求头
+            if (headers.isNotEmpty()) {
+                defaultHttpDataSource.setDefaultRequestProperties(headers)
+                Log.d(TAG, "Setting headers: $headers")
+            } else {
+                Log.d(TAG, "No headers set")
+            }
+
             _httpDataSource = defaultHttpDataSource
 
-            sourceTypeList = if (path.lowercase().endsWith(".m3u8")) {
-                listOf(SourceType.HLS)
-            } else if (path.lowercase().endsWith(".mpd")) {
-                listOf(SourceType.DASH)
-            } else if (scheme.lowercase() == "rtsp") {
-                listOf(SourceType.RTSP)
-            } else if (scheme.lowercase() == "rtmp") {
-                listOf(SourceType.RTMP)
-            } else if (scheme.lowercase() == "rtp") {
-                listOf(SourceType.RTP)
-            } else {
-                listOf(SourceType.HLS, SourceType.PROGRESSIVE)
+            sourceTypeList = when {
+                path.lowercase().endsWith(".m3u8") -> listOf(SourceType.HLS)
+                path.lowercase().endsWith(".mpd") -> listOf(SourceType.DASH)
+                scheme.lowercase() == "rtsp" -> listOf(SourceType.RTSP)
+                scheme.lowercase() == "rtmp" -> listOf(SourceType.RTMP)
+                scheme.lowercase() == "rtp" -> listOf(SourceType.RTP)
+                else -> listOf(SourceType.HLS, SourceType.PROGRESSIVE)
             }
 
             MediaItem.fromUri(it)
@@ -185,12 +223,10 @@ class TVModel(var tv: TV) : ViewModel() {
 
     fun nextSourceType(): Boolean {
         sourceTypeIndex = (sourceTypeIndex + 1) % sourceTypeList.size
-
         return sourceTypeIndex == sourceTypeList.size - 1
     }
 
     fun confirmSourceType() {
-        // TODO save default sourceType
         tv.sourceType = getSourceTypeCurrent()
     }
 
@@ -209,38 +245,40 @@ class TVModel(var tv: TV) : ViewModel() {
         }
         val mediaItem = _mediaItem!!
 
-        if (_httpDataSource == null) {
-            return null
-        }
-        val httpDataSource = _httpDataSource!!
-
         return when (getSourceTypeCurrent()) {
-            SourceType.HLS -> HlsMediaSource.Factory(httpDataSource).createMediaSource(mediaItem)
-            SourceType.RTSP -> if (userAgent.isEmpty()) {
-                RtspMediaSource.Factory().createMediaSource(mediaItem)
-            } else {
-                RtspMediaSource.Factory().setUserAgent(userAgent).createMediaSource(mediaItem)
+            SourceType.HLS -> {
+                if (_httpDataSource == null) return null
+                HlsMediaSource.Factory(_httpDataSource!!).createMediaSource(mediaItem)
             }
-
+            SourceType.RTSP -> {
+                val factory = if (userAgent.isNotEmpty()) {
+                    RtspMediaSource.Factory().setUserAgent(userAgent)
+                } else {
+                    RtspMediaSource.Factory()
+                }
+                factory.createMediaSource(mediaItem)
+            }
             SourceType.RTMP -> {
                 val rtmpDataSource = RtmpDataSource.Factory()
                 ProgressiveMediaSource.Factory(rtmpDataSource)
                     .createMediaSource(mediaItem)
             }
-
             SourceType.RTP -> {
                 val ctx = appContext ?: return null
-                multicastLockManager?.acquire()  // 🆕 获取组播锁
-
+                multicastLockManager?.acquire()
                 val rtpDataSource = RtpDataSourceFactory(ctx)
                 ProgressiveMediaSource.Factory(rtpDataSource)
                     .createMediaSource(mediaItem)
             }
-
-            SourceType.DASH -> DashMediaSource.Factory(httpDataSource).createMediaSource(mediaItem)
-            SourceType.PROGRESSIVE -> ProgressiveMediaSource.Factory(httpDataSource)
-                .createMediaSource(mediaItem)
-
+            SourceType.DASH -> {
+                if (_httpDataSource == null) return null
+                DashMediaSource.Factory(_httpDataSource!!).createMediaSource(mediaItem)
+            }
+            SourceType.PROGRESSIVE -> {
+                if (_httpDataSource == null) return null
+                ProgressiveMediaSource.Factory(_httpDataSource!!)
+                    .createMediaSource(mediaItem)
+            }
             else -> null
         }
     }
@@ -255,9 +293,7 @@ class TVModel(var tv: TV) : ViewModel() {
         }
 
         _videoIndex.value = (videoIndexValue + 1) % tv.uris.size
-        sourceTypeList = listOf(
-            SourceType.UNKNOWN,
-        )
+        sourceTypeList = listOf(SourceType.UNKNOWN)
 
         return isLastVideo()
     }

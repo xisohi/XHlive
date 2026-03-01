@@ -10,10 +10,10 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.setPadding
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.lizongying.mytv0.data.Source
 import com.lizongying.mytv0.databinding.SourcesItemBinding
 import com.lizongying.mytv0.models.Sources
 import java.util.Locale
-
 
 class SourcesAdapter(
     private val context: Context,
@@ -125,8 +125,8 @@ class SourcesAdapter(
                 false
             }
 
-            viewHolder.bindNum("%02d".format(position))
-            viewHolder.bindTitle(source.uri)
+            viewHolder.bindNum("%02d".format(position + 1))  // 从1开始显示
+            viewHolder.bindTitle(source)
         }
     }
 
@@ -138,8 +138,30 @@ class SourcesAdapter(
             binding.num.text = text
         }
 
-        fun bindTitle(text: String) {
-            binding.title.text = text
+        fun bindTitle(source: Source) {
+            // 优先使用 name，如果没有则自动从 URI 识别
+            val displayName = if (source.name.isNotEmpty()) {
+                source.name
+            } else {
+                getNameFromUri(source.uri)
+            }
+            binding.title.text = displayName
+        }
+
+        private fun getNameFromUri(uri: String): String {
+            return try {
+                val androidUri = android.net.Uri.parse(uri)
+                val lastPathSegment = androidUri.lastPathSegment
+                if (!lastPathSegment.isNullOrEmpty()) {
+                    // 去除文件扩展名
+                    lastPathSegment.substringBeforeLast(".").ifEmpty { androidUri.host ?: uri }
+                } else {
+                    androidUri.host ?: uri
+                }
+            } catch (e: Exception) {
+                // 如果URI解析失败，返回原始URI的简化版本
+                uri.substringAfterLast("/").substringBefore("?").ifEmpty { uri }
+            }
         }
 
         fun focus(hasFocus: Boolean) {
@@ -215,4 +237,3 @@ class SourcesAdapter(
         private const val TAG = "SourcesAdapter"
     }
 }
-

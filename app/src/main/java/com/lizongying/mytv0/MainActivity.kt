@@ -21,9 +21,9 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
+import com.lizongying.mytv0.models.TVModel
 import java.util.Locale
 import kotlin.math.abs
-
 
 class MainActivity : AppCompatActivity() {
 
@@ -55,7 +55,6 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-//        requestWindowFeature(FEATURE_NO_TITLE)
         window.setFlags(
             WindowManager.LayoutParams.FLAG_FULLSCREEN,
             WindowManager.LayoutParams.FLAG_FULLSCREEN
@@ -101,7 +100,6 @@ class MainActivity : AppCompatActivity() {
                         View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
                         View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
                         View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-//                        View.SYSTEM_UI_FLAG_IMMERSIVE
         }
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -140,40 +138,30 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-//            if (SP.defaultLike) {
-//                TVList.groupModel.setPosition(0)
-//                val tvModel = TVList.listModel.find { it.like.value as Boolean }
-//                TVList.setPosition(tvModel?.tv?.id ?: 0)
-//                "播放收藏频道".showToast()
-//            }
-
             viewModel.channelsOk.observe(this) { it ->
                 if (it) {
                     val prevGroup = viewModel.groupModel.positionValue
                     val tvModel = if (SP.channel > 0) {
                         val position = if (SP.channel < viewModel.listModel.size) {
-                            // R.string.play_default_channel.showToast()
                             SP.channel - 1
                         } else {
-                            // R.string.default_channel_out_of_range.showToast()
                             SP.channel = 0
                             0
                         }
                         Log.i(TAG, "播放默認頻道")
                         viewModel.groupModel.getPosition(position)
                     } else {
-//                if (SP.position < 0 || SP.position >= TVList.groupModel.getAllList()!!
-//                        .size()
-//                ) {
-//                    // R.string.last_channel_out_of_range.showToast()
-//                    0
-//                } else {
-//                    // R.string.play_last_channel.showToast()
-//                    SP.position
-//                }
                         Log.i(TAG, "播放上次頻道")
                         viewModel.groupModel.getCurrent()
                     }
+
+                    // 设置当前源到TVModel
+                    tvModel?.let { model ->
+                        val currentSource = viewModel.sources.getSource(viewModel.sources.checkedValue)
+                        model.setCurrentSource(currentSource)
+                        Log.i(TAG, "Setting source for ${model.tv.title}: UA=${currentSource?.ua}, Referrer=${currentSource?.referrer}")
+                    }
+
                     viewModel.groupModel.setPositionPlaying()
                     viewModel.groupModel.getCurrentList()
                         ?.let {
@@ -190,21 +178,13 @@ class MainActivity : AppCompatActivity() {
 
                     viewModel.groupModel.isInLikeMode =
                         SP.defaultLike && viewModel.groupModel.positionValue == 0
-                    if (viewModel.groupModel.isInLikeMode) {
-//                R.string.favorite_mode.showToast()
-                    } else {
-//                R.string.standard_mode.showToast()
-                    }
 
-                    // TODO group position
                     viewModel.updateEPG()
                 }
             }
 
             Utils.isp.observe(this) {
                 val id = when (it) {
-//                    ISP.CHINA_MOBILE -> R.raw.mobile
-//                    ISP.IPV6->R.raw.ipv6
                     else -> 0
                 }
 
@@ -232,10 +212,7 @@ class MainActivity : AppCompatActivity() {
     private fun watch() {
         viewModel.listModel.forEach { tvModel ->
             tvModel.errInfo.observe(this) { _ ->
-
-                if (tvModel.errInfo.value != null
-//                    && tvModel.tv.id == TVList.positionValue
-                ) {
+                if (tvModel.errInfo.value != null) {
                     hideFragment(loadingFragment)
                     if (tvModel.errInfo.value == "") {
                         Log.i(TAG, "${tvModel.tv.title} playing")
@@ -251,12 +228,14 @@ class MainActivity : AppCompatActivity() {
             }
 
             tvModel.ready.observe(this) { _ ->
-
-                // not first time && channel is not changed
-                if (tvModel.ready.value != null
-//                    && tvModel.tv.id == TVList.positionValue
-                ) {
+                if (tvModel.ready.value != null) {
                     Log.i(TAG, "${tvModel.tv.title} 嘗試播放")
+
+                    // 每次播放前重新设置当前源（确保使用最新的源信息）
+                    val currentSource = viewModel.sources.getSource(viewModel.sources.checkedValue)
+                    tvModel.setCurrentSource(currentSource)
+                    Log.i(TAG, "Before play - Setting source for ${tvModel.tv.title}: UA=${currentSource?.ua}, Referrer=${currentSource?.referrer}")
+
                     hideFragment(errorFragment)
                     showFragment(loadingFragment)
                     playerFragment.play(tvModel)
@@ -442,6 +421,13 @@ class MainActivity : AppCompatActivity() {
             val prevGroup = viewModel.groupModel.positionValue
             val tvModel = viewModel.groupModel.getPosition(position)
 
+            // 设置当前源到TVModel
+            tvModel?.let { model ->
+                val currentSource = viewModel.sources.getSource(viewModel.sources.checkedValue)
+                model.setCurrentSource(currentSource)
+                Log.i(TAG, "play() - Setting source for ${model.tv.title}: UA=${currentSource?.ua}, Referrer=${currentSource?.referrer}")
+            }
+
             tvModel?.setReady()
             viewModel.groupModel.setPositionPlaying()
             viewModel.groupModel.getCurrentList()?.setPositionPlaying()
@@ -465,6 +451,13 @@ class MainActivity : AppCompatActivity() {
                 viewModel.groupModel.getPrev()
             }
 
+        // 设置当前源到TVModel
+        tvModel?.let { model ->
+            val currentSource = viewModel.sources.getSource(viewModel.sources.checkedValue)
+            model.setCurrentSource(currentSource)
+            Log.i(TAG, "prev() - Setting source for ${model.tv.title}: UA=${currentSource?.ua}, Referrer=${currentSource?.referrer}")
+        }
+
         tvModel?.setReady()
         viewModel.groupModel.setPositionPlaying()
         viewModel.groupModel.getCurrentList()?.setPositionPlaying()
@@ -484,6 +477,13 @@ class MainActivity : AppCompatActivity() {
             } else {
                 viewModel.groupModel.getNext()
             }
+
+        // 设置当前源到TVModel
+        tvModel?.let { model ->
+            val currentSource = viewModel.sources.getSource(viewModel.sources.checkedValue)
+            model.setCurrentSource(currentSource)
+            Log.i(TAG, "next() - Setting source for ${model.tv.title}: UA=${currentSource?.ua}, Referrer=${currentSource?.referrer}")
+        }
 
         tvModel?.setReady()
         viewModel.groupModel.setPositionPlaying()
@@ -580,12 +580,8 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-//        if (SP.channelNum) {
-//            channelFragment.show(channel)
-//        }
         channelFragment.show(channel)
     }
-
 
     private fun channelUp() {
         if (programFragment.isAdded && !programFragment.isHidden) {

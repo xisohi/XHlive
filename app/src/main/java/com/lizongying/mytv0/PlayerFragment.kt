@@ -17,6 +17,7 @@ import androidx.media3.common.Player.DISCONTINUITY_REASON_AUTO_TRANSITION
 import androidx.media3.common.Player.REPEAT_MODE_ALL
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
@@ -171,12 +172,14 @@ class PlayerFragment : Fragment() {
     fun play(tvModel: TVModel) {
         this.tvModel?.releaseMulticastLock()
         this.tvModel = tvModel
-        tvModel.setContext(requireContext())  // 🆕 注入Context，支持RTP播放
+        tvModel.setContext(requireContext())  // 注入Context，支持RTP播放
         player?.run {
             tvModel.getVideoUrl() ?: return
 
             while (true) {
                 val last = tvModel.isLastVideo()
+
+                // 获取 MediaItem 时已经包含了 UA 和 Referrer 信息
                 val mediaItem = tvModel.getMediaItem()
                 if (mediaItem == null) {
                     if (last) {
@@ -186,6 +189,8 @@ class PlayerFragment : Fragment() {
                     tvModel.nextVideo()
                     continue
                 }
+
+                // 获取 MediaSource 时会使用配置的 UA 和 Referrer
                 val mediaSource = tvModel.getMediaSource()
                 if (mediaSource != null) {
                     setMediaSource(mediaSource)

@@ -1,6 +1,5 @@
 package com.lizongying.mytv0
 
-
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
@@ -99,8 +98,10 @@ object SP {
                 if (str.isNotEmpty()) {
                     DEFAULT_SOURCES = gson.toJson(
                         Gua().decode(str).trim().split("\n").map { i ->
+                            val uri = i.trim()
                             Source(
-                                uri = i
+                                uri = uri,
+                                name = uri.substringAfterLast("/").substringBefore("?").ifEmpty { uri } // 自动生成名称
                             )
                         }, typeSourceList
                     ) ?: ""
@@ -216,4 +217,5 @@ object SP {
     var sources: String?
         get() = sp.getString(KEY_SOURCES, DEFAULT_SOURCES)
         set(value) = sp.edit().putString(KEY_SOURCES, value).apply()
+
 }

@@ -1,6 +1,5 @@
 package com.lizongying.mytv0
 
-
 import MainViewModel
 import MainViewModel.Companion.CACHE_FILE_NAME
 import MainViewModel.Companion.DEFAULT_CHANNELS_FILE
@@ -25,7 +24,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.charset.StandardCharsets
-
 
 class SimpleServer(private val context: Context, private val viewModel: MainViewModel) :
     NanoHTTPD(PORT) {
@@ -167,8 +165,18 @@ class SimpleServer(private val context: Context, private val viewModel: MainView
             readBody(session)?.let {
                 val req = gson.fromJson(it, ReqSourceAdd::class.java)
                 val uri = Uri.parse(req.uri)
+
+                // 创建Source时保存所有信息（包括name、ua和referrer）
+                val source = Source(
+                    id = req.id,
+                    uri = req.uri,
+                    name = req.name,
+                    ua = req.ua,
+                    referrer = req.referrer
+                )
                 handler.post {
-                    viewModel.importFromUri(uri, req.id)
+                    viewModel.sources.addSource(source)
+                    viewModel.importFromUri(uri, req.id, req.ua, req.referrer)
                 }
             }
         } catch (e: Exception) {
@@ -292,9 +300,22 @@ class SimpleServer(private val context: Context, private val viewModel: MainView
     }
 
     private fun readBody(session: IHTTPSession): String? {
-        val map = HashMap<String, String>()
-        session.parseBody(map)
-        return map["postData"]
+        val contentLength = session.headers["content-length"]?.toIntOrNull() ?: 0
+        if (contentLength <= 0) return null
+
+        return try {
+            val buffer = ByteArray(contentLength)
+            var read = 0
+            while (read < contentLength) {
+                val r = session.inputStream.read(buffer, read, contentLength - read)
+                if (r == -1) break
+                read += r
+            }
+            String(buffer, 0, read, StandardCharsets.UTF_8)
+        } catch (e: Exception) {
+            Log.e(TAG, "readBody error", e)
+            null
+        }
     }
 
     private fun handleStaticContent(): Response {
