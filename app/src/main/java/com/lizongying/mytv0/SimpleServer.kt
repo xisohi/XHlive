@@ -99,6 +99,7 @@ class SimpleServer(private val context: Context, private val viewModel: MainView
 
     private suspend fun fetchSources(url: String): String {
         val urls = getUrls(url)
+        Log.i(TAG, "Fetching sources from: $urls")
 
         var sources = ""
         var success = false
@@ -111,16 +112,21 @@ class SimpleServer(private val context: Context, private val viewModel: MainView
 
                     if (response.isSuccessful) {
                         sources = response.bodyAlias()?.string() ?: ""
+                        Log.i(TAG, "Response length: ${sources.length}")
                         success = true
                     } else {
                         Log.e(TAG, "Request status ${response.codeAlias()}")
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "fetchSources", e)
+                    Log.e(TAG, "fetchSources error", e)
                 }
             }
 
             if (success) break
+        }
+
+        if (sources.isEmpty()) {
+            Log.e(TAG, "All fetch attempts failed, returning empty string")
         }
 
         return sources
@@ -131,10 +137,101 @@ class SimpleServer(private val context: Context, private val viewModel: MainView
             fetchSources("https://xhys.lcjly.cn/live.txt")
         }
 
+        // 检查响应是否为空
+        if (response.isEmpty()) {
+            Log.e(TAG, "fetchSources returned empty response")
+            return newFixedLengthResponse(
+                Response.Status.OK,
+                "application/json",
+                "[]"  // 返回空数组
+            )
+        }
+
+        // 解码
+        val decoded = Gua().decode(response)
+        Log.i(TAG, "Decoded sources: $decoded")
+
+        // 检查解码后是否为空
+        if (decoded.isEmpty()) {
+            Log.e(TAG, "Decoded sources is empty")
+            return newFixedLengthResponse(
+                Response.Status.OK,
+                "application/json",
+                "[]"
+            )
+        }
+
+        val sourcesList = try {
+            decoded.trim().split("\n").mapIndexed { index, line ->
+                if (line.isBlank()) return@mapIndexed null
+
+                val trimmedLine = line.trim()
+                Log.d(TAG, "Parsing line $index: $trimmedLine")
+
+                // 按逗号分割
+                val parts = trimmedLine.split(",").map { it.trim() }
+
+                var name = ""
+                var uri = ""
+                var ua = ""
+                var referrer = ""
+
+                // 解析每个部分
+                for (part in parts) {
+                    when {
+                        part.startsWith("name:") -> {
+                            name = part.substringAfter("name:").trim()
+                            Log.d(TAG, "  Found name: $name")
+                        }
+                        part.startsWith("uri:") -> {
+                            uri = part.substringAfter("uri:").trim()
+                            Log.d(TAG, "  Found uri: $uri")
+                        }
+                        part.startsWith("ua:") -> {
+                            ua = part.substringAfter("ua:").trim()
+                            Log.d(TAG, "  Found ua: $ua")
+                        }
+                        part.startsWith("referrer:") -> {
+                            referrer = part.substringAfter("referrer:").trim()
+                            Log.d(TAG, "  Found referrer: $referrer")
+                        }
+                    }
+                }
+
+                // 确保uri不为空
+                if (uri.isEmpty()) {
+                    Log.e(TAG, "  WARNING: uri is empty for line: $trimmedLine")
+                    return@mapIndexed null
+                }
+
+                Source(
+                    id = java.util.UUID.randomUUID().toString(),
+                    uri = uri,
+                    name = name,
+                    ua = ua,
+                    referrer = referrer,
+                    checked = false
+                )
+            }.filterNotNull()
+        } catch (e: Exception) {
+            Log.e(TAG, "解析sources失败", e)
+            e.printStackTrace()
+            emptyList<Source>()
+        }
+
+        // 打印最终结果
+        Log.i(TAG, "Returning ${sourcesList.size} sources:")
+        sourcesList.forEachIndexed { index, source ->
+            Log.i(TAG, "[$index] name=${source.name}, uri=${source.uri}, ua=${source.ua}, referrer=${source.referrer}")
+        }
+
+        val jsonResponse = gson.toJson(sourcesList)
+        Log.i(TAG, "JSON response: $jsonResponse")
+
         return newFixedLengthResponse(
             Response.Status.OK,
             "application/json",
-            Gua().decode(response)
+            jsonResponse
         )
     }
 
@@ -166,7 +263,6 @@ class SimpleServer(private val context: Context, private val viewModel: MainView
                 val req = gson.fromJson(it, ReqSourceAdd::class.java)
                 val uri = Uri.parse(req.uri)
 
-                // 创建Source时保存所有信息（包括name、ua和referrer）
                 val source = Source(
                     id = req.id,
                     uri = req.uri,

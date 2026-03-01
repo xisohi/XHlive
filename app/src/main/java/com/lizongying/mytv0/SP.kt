@@ -96,14 +96,53 @@ object SP {
             .use {
                 val str = it.readText()
                 if (str.isNotEmpty()) {
+                    val decoded = Gua().decode(str)
+                    Log.i(TAG, "Decoded sources: $decoded")
+
                     DEFAULT_SOURCES = gson.toJson(
-                        Gua().decode(str).trim().split("\n").map { i ->
-                            val uri = i.trim()
+                        decoded.trim().split("\n").map { line ->
+                            if (line.isBlank()) return@map null
+
+                            val trimmedLine = line.trim()
+                            val parts = trimmedLine.split(",").map { it.trim() }
+
+                            var name = ""
+                            var uri = ""
+                            var ua = ""
+                            var referrer = ""
+
+                            for (part in parts) {
+                                when {
+                                    part.startsWith("name:") -> name = part.substringAfter("name:").trim()
+                                    part.startsWith("uri:") -> uri = part.substringAfter("uri:").trim()
+                                    part.startsWith("ua:") -> ua = part.substringAfter("ua:").trim()
+                                    part.startsWith("referrer:") -> referrer = part.substringAfter("referrer:").trim()
+                                }
+                            }
+
+                            // 如果name为空，从URI生成
+                            if (name.isEmpty() && uri.isNotEmpty()) {
+                                name = try {
+                                    val androidUri = android.net.Uri.parse(uri)
+                                    val lastPathSegment = androidUri.lastPathSegment
+                                    if (!lastPathSegment.isNullOrEmpty()) {
+                                        lastPathSegment.substringBeforeLast(".").ifEmpty { androidUri.host ?: uri }
+                                    } else {
+                                        androidUri.host ?: uri
+                                    }
+                                } catch (e: Exception) {
+                                    uri.substringAfterLast("/").substringBefore("?").ifEmpty { uri }
+                                }
+                            }
+
                             Source(
                                 uri = uri,
-                                name = uri.substringAfterLast("/").substringBefore("?").ifEmpty { uri } // 自动生成名称
+                                name = name,
+                                ua = ua,
+                                referrer = referrer,
+                                checked = false
                             )
-                        }, typeSourceList
+                        }.filterNotNull(), typeSourceList
                     ) ?: ""
                 }
             }
