@@ -60,6 +60,7 @@
   ```
   name:测试源(必填）,uri:https://example.com/test.txt(必填）,ua:okHttp/Mod-1.5.0.0(选填）,referrer:https://www.example.com/(选填）
   ```
+64卦：https://lizongying.github.io/js-gua64/
 
 推薦配合使用 [my-tv-server](https://github.com/lizongying/my-tv-server)
 
@@ -72,10 +73,6 @@
 ![image](./screenshots/Screenshot_20240810_151748.png)
 ![image](./screenshots/Screenshot_20240813_232847.png)
 ![image](./screenshots/Screenshot_20240813_232900.png)
-
-## 更新日誌
-
-[更新日誌](./HISTORY.md)
 
 ## 其他
 

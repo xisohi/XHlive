@@ -69,7 +69,7 @@ class SettingFragment : Fragment() {
             Log.i(TAG, "成功找到checkVersion按钮")
         }
 
-        binding.versionName.text = "v${context.appVersionName}"
+        binding.versionName.text = "v${BuildConfig.VERSION_NAME}"
         binding.version.text = "https://github.com/xisohi/XHlive"
 
         // 初始化所有开关和设置
