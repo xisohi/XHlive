@@ -14,6 +14,7 @@
         android:theme="@style/Theme.MyTV0"
         android:usesCleartextTraffic="true"
         android:enableOnBackInvokedCallback="false">
+        android:requestLegacyExternalStorage="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -1,6 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
+    <!-- 应用私有下载目录 -->
     <external-files-path
         name="download"
+        path="Download/" />
+
+    <!-- 公共下载目录（Android 5.1.1 主要使用） -->
+    <external-path
+        name="public_download"
+        path="Download/" />
+
+    <!-- 缓存目录（备用） -->
+    <cache-path
+        name="cache"
         path="." />
 </paths>
