@@ -24,9 +24,10 @@ import kotlinx.coroutines.withContext
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.IOException
+import java.lang.ref.WeakReference
 
 class UpdateManager(
-    private val context: Context,
+    private val context: Context,  // Application Context，用于下载等操作
     private val versionCode: Long
 ) : ConfirmationFragment.ConfirmationListener {
 
@@ -39,6 +40,25 @@ class UpdateManager(
 
     // 从 Github 获取文件名
     private val apkFileName = Github.APK_FILE_NAME
+
+    // Activity 弱引用，用于显示对话框
+    private var activityRef: WeakReference<FragmentActivity>? = null
+
+    // 待显示的更新信息（当 Activity 不可用时暂存）
+    private var pendingUpdateText: String? = null
+    private var pendingHasUpdate: Boolean = false
+
+    // 设置 Activity 引用，在 Activity onResume 时调用
+    fun setActivity(activity: FragmentActivity?) {
+        this.activityRef = activity?.let { WeakReference(it) }
+
+        // 如果有待显示的更新，且 Activity 可用，立即显示
+        if (activity != null && !activity.isFinishing && pendingUpdateText != null) {
+            showUpdateDialog(activity, pendingUpdateText!!, pendingHasUpdate)
+            pendingUpdateText = null
+            pendingHasUpdate = false
+        }
+    }
 
     private fun hasWritePermission(): Boolean {
         return Environment.getExternalStorageState() == Environment.MEDIA_MOUNTED
@@ -171,11 +191,28 @@ class UpdateManager(
     }
 
     private fun updateUI(text: String, update: Boolean) {
+        val activity = activityRef?.get()
+
+        if (activity == null || activity.isFinishing) {
+            // Activity 不可用，暂存信息等待下次
+            Log.w(TAG, "Activity not available, pending update UI")
+            pendingUpdateText = text
+            pendingHasUpdate = update
+            return
+        }
+
+        showUpdateDialog(activity, text, update)
+    }
+
+    private fun showUpdateDialog(activity: FragmentActivity, text: String, update: Boolean) {
         try {
-            val dialog = ConfirmationFragment(this@UpdateManager, text, update)
-            dialog.show((context as FragmentActivity).supportFragmentManager, TAG)
+            // 确保使用 Activity 的 supportFragmentManager
+            val dialog = ConfirmationFragment(this, text, update)
+            dialog.show(activity.supportFragmentManager, TAG)
         } catch (e: Exception) {
             Log.e(TAG, "Show dialog failed", e)
+            // 降级：使用 Toast 提示
+            text.showToast()
         }
     }
 
@@ -521,6 +558,7 @@ class UpdateManager(
 
     fun destroy() {
         downloadJob?.cancel()
+        activityRef?.clear()
         Log.i(TAG, "UpdateManager销毁")
     }
 

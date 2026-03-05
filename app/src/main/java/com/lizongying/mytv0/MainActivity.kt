@@ -109,6 +109,11 @@ class MainActivity : AppCompatActivity() {
         viewModel = ViewModelProvider(this)[MainViewModel::class.java]
         viewModel.init(this)
 
+        // 设置 Activity 到 UpdateManager 并检查更新
+        val app = application as MyTVApplication
+        app.updateManager.setActivity(this)
+        app.updateManager.checkAndUpdate()
+
         if (savedInstanceState == null) {
             supportFragmentManager.beginTransaction()
                 .add(R.id.main_browse_fragment, playerFragment)
@@ -825,17 +830,29 @@ class MainActivity : AppCompatActivity() {
         isSafeToPerformFragmentTransactions = true
 
         showTimeFragment()
+
+        // 重新设置 Activity 引用（应对暂存的更新）
+        val app = application as MyTVApplication
+        app.updateManager.setActivity(this)
     }
 
     override fun onPause() {
         super.onPause()
 
         isSafeToPerformFragmentTransactions = false
+
+        // 清除 Activity 引用，避免内存泄漏
+        val app = application as MyTVApplication
+        app.updateManager.setActivity(null)
     }
 
     override fun onDestroy() {
         super.onDestroy()
         server?.stop()
+
+        // 确保清理
+        val app = application as MyTVApplication
+        app.updateManager.setActivity(null)
     }
 
     override fun attachBaseContext(base: Context) {

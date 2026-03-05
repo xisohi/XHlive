@@ -430,7 +430,10 @@ class SettingFragment : Fragment() {
                 PERMISSIONS_REQUEST_CODE
             )
         } else {
-            (requireActivity().application as MyTVApplication).checkForUpdates()
+            // ✅ 修改：直接调用 updateManager.checkAndUpdate()，并设置 Activity
+            val app = requireActivity().application as MyTVApplication
+            app.updateManager.setActivity(requireActivity() as? androidx.fragment.app.FragmentActivity)
+            app.updateManager.checkAndUpdate()
         }
     }
 
@@ -473,7 +476,10 @@ class SettingFragment : Fragment() {
                 }
             }
             if (allPermissionsGranted) {
-                (requireActivity().application as MyTVApplication).checkForUpdates()
+                // ✅ 修改：直接调用 updateManager.checkAndUpdate()，并设置 Activity
+                val app = requireActivity().application as MyTVApplication
+                app.updateManager.setActivity(requireActivity() as? androidx.fragment.app.FragmentActivity)
+                app.updateManager.checkAndUpdate()
             } else {
                 Log.w(TAG, "ask permissions failed")
                 R.string.authorization_failed.showToast()
@@ -492,4 +498,3 @@ class SettingFragment : Fragment() {
         const val PERMISSION_READ_EXTERNAL_STORAGE_REQUEST_CODE = 2
     }
 }
-
