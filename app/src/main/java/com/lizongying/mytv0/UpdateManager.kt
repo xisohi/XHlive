@@ -48,7 +48,7 @@ class UpdateManager(
     companion object {
         private const val TAG = "UpdateManager"
         // APK文件名 - 固定为 XHLIVE.apk
-        private const val APK_FILE_NAME = "XHLIVE.apk"
+        private const val APK_FILE_NAME = "XHlive.apk"
         private const val MIME_TYPE_APK = "application/vnd.android.package-archive"
         private const val PROGRESS_UPDATE_INTERVAL = 1000L // 1秒
     }
