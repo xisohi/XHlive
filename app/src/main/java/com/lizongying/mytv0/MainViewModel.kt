@@ -214,8 +214,8 @@ class MainViewModel : ViewModel() {
             val url = tvModel.tv.logo
             var urls =
                 listOf(
-                    "https://live.fanmingming.cn/tv/$name.png"
-                ) + getUrls("https://raw.githubusercontent.com/fanmingming/live/main/tv/$name.png")
+                    "https://iptv.xisohi.dpdns.org/logo/$name.png"
+                ) + getUrls("https://raw.githubusercontent.com/xisohi/CHINA-IPTV/main/logo/$name.png")
             if (url.isNotEmpty()) {
                 urls = (getUrls(url) + urls).distinct()
             }
