@@ -81,9 +81,6 @@
 ```shell
 adb install my-tv-0.apk
 ```
-
-小米電視可以使用小米電視助手進行安裝
-
 ## TODO
 
 * 支持回看
