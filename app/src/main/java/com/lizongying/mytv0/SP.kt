@@ -66,7 +66,7 @@ object SP {
     const val DEFAULT_CONFIG_URL = ""
     const val DEFAULT_PROXY = ""
     const val DEFAULT_EPG =
-        "https://live.fanmingming.cn/e.xml,https://raw.githubusercontent.com/fanmingming/live/main/e.xml"
+        "https://xhys.xisohi.dpdns.org/e.xml,https://raw.githubusercontent.com/xisohi/XHYSosc/master/e.xml"
     const val DEFAULT_CHANNEL = 0
     const val DEFAULT_SHOW_ALL_CHANNELS = false
     const val DEFAULT_COMPACT_MENU = true
