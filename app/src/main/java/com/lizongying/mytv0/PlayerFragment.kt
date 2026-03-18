@@ -1,5 +1,6 @@
 package com.lizongying.mytv0
 
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -63,20 +64,52 @@ class PlayerFragment : Fragment() {
         val ctx = requireContext()
         val playerView = binding.playerView
 
-        // --- 核心修改：優化渲染工廠配置 ---
+        // 创建渲染工厂
         val renderersFactory = DefaultRenderersFactory(ctx)
 
-        // 1. 開啟解碼器回退功能：當硬解崩潰時，自動嘗試尋找其他解碼器，防止 App 閃退
+        // ========== Android 5.x (API 21-22) 特殊处理 ==========
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.LOLLIPOP_MR1) {  // API 21,22 (Android 5.0, 5.1, 5.1.1)
+            Log.i(TAG, "========== Android 5.x (API ${Build.VERSION.SDK_INT}) 检测到，使用兼容模式 ==========")
+
+            // 5.x强制使用软解
+            renderersFactory.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+
+            // 5.x只使用软件解码器
+            renderersFactory.setMediaCodecSelector(object : MediaCodecSelector {
+                override fun getDecoderInfos(
+                    mimeType: String,
+                    requiresSecureDecoder: Boolean,
+                    requiresTunnelingDecoder: Boolean
+                ): MutableList<androidx.media3.exoplayer.mediacodec.MediaCodecInfo> {
+
+                    val allInfos = MediaCodecUtil.getDecoderInfos(
+                        mimeType,
+                        requiresSecureDecoder,
+                        requiresTunnelingDecoder
+                    )
+
+                    Log.i(TAG, "5.x 可用解码器 for $mimeType: ${allInfos.size}")
+                    allInfos.forEachIndexed { index, info ->
+                        Log.i(TAG, "  [$index] ${info.name} - swOnly=${info.softwareOnly}")
+                    }
+
+                    // 只保留软件解码器
+                    val swInfos = allInfos.filter { it.softwareOnly }.toMutableList()
+                    return if (swInfos.isNotEmpty()) swInfos else allInfos
+                }
+            })
+        } else {
+            // Android 6.0+ 正常逻辑
+            Log.i(TAG, "Android 6.0+ (API ${Build.VERSION.SDK_INT}) 使用正常模式")
+            renderersFactory.setExtensionRendererMode(
+                if (SP.softDecode) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+                else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
+            )
+            renderersFactory.setMediaCodecSelector(PlayerMediaCodecSelector())
+        }
+
+        // 在所有版本都开启解码器回退
         renderersFactory.setEnableDecoderFallback(true)
-
-        // 2. 修正媒體解碼選擇器邏輯
-        renderersFactory.setMediaCodecSelector(PlayerMediaCodecSelector())
-
-        // 3. 響應軟硬解開關
-        renderersFactory.setExtensionRendererMode(
-            if (SP.softDecode) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
-            else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
-        )
 
         if (player != null) {
             player?.release()
@@ -85,7 +118,6 @@ class PlayerFragment : Fragment() {
         player = ExoPlayer.Builder(ctx)
             .setRenderersFactory(renderersFactory)
             .build()
-        // --- 修改結束 ---
 
         player?.repeatMode = REPEAT_MODE_ALL
         player?.playWhenReady = true
@@ -150,6 +182,18 @@ class PlayerFragment : Fragment() {
 
                 val tv = tvModel!!
 
+                // 5.x特殊错误处理
+                if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.LOLLIPOP_MR1) {
+                    Log.e(TAG, "5.x 播放错误: ${error.message}", error)
+                    // 直接尝试下一个源
+                    if (!tv.isLastVideo()) {
+                        tv.nextVideo()
+                        tv.setReady(true)
+                        tv.retryTimes = 0
+                        return
+                    }
+                }
+
                 if (tv.retryTimes < tv.retryMaxTimes) {
                     var last = true
                     if (tv.getSourceTypeDefault() == SourceType.UNKNOWN) {
@@ -187,6 +231,11 @@ class PlayerFragment : Fragment() {
         this.tvModel = tvModel
         tvModel.setContext(requireContext())
 
+        // 添加播放信息日志
+        Log.i(TAG, "准备播放: ${tvModel.tv.title}")
+        Log.i(TAG, "视频地址: ${tvModel.getVideoUrl()}")
+        Log.i(TAG, "Android版本: ${Build.VERSION.SDK_INT} (${Build.VERSION.RELEASE})")
+
         player?.run {
             tvModel.getVideoUrl() ?: return
 
@@ -213,7 +262,7 @@ class PlayerFragment : Fragment() {
         }
     }
 
-    // --- 核心修正：正確的 MediaCodec 選擇邏輯 ---
+    // --- 修正后的MediaCodec选择器（用于Android 6.0+）---
     @OptIn(UnstableApi::class)
     class PlayerMediaCodecSelector : MediaCodecSelector {
         override fun getDecoderInfos(
@@ -221,8 +270,7 @@ class PlayerFragment : Fragment() {
             requiresSecureDecoder: Boolean,
             requiresTunnelingDecoder: Boolean
         ): MutableList<androidx.media3.exoplayer.mediacodec.MediaCodecInfo> {
-            // 直接獲取系統所有可用解碼器列表
-            // 不要攔截 H.265 並強行指定 "c2.android.hevc.decoder"，這會導致老電視崩潰
+            // 直接返回系统推荐的所有解码器，让ExoPlayer根据性能自动选择
             return MediaCodecUtil.getDecoderInfos(
                 mimeType,
                 requiresSecureDecoder,
