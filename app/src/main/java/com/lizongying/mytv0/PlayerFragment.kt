@@ -26,14 +26,12 @@ import com.lizongying.mytv0.data.SourceType
 import com.lizongying.mytv0.databinding.PlayerBinding
 import com.lizongying.mytv0.models.TVModel
 import android.content.Context
-import com.lizongying.mytv0.data.RtpDataSourceFactory
 
 class PlayerFragment : Fragment() {
     private var _binding: PlayerBinding? = null
     private val binding get() = _binding!!
 
     private var player: ExoPlayer? = null
-
     private var tvModel: TVModel? = null
     private val aspectRatio = 16f / 9f
 
@@ -56,108 +54,79 @@ class PlayerFragment : Fragment() {
 
     @OptIn(UnstableApi::class)
     fun updatePlayer() {
-        if (context == null) {
-            Log.e(TAG, "context == null")
-            return
-        }
-
+        if (context == null) return
         val ctx = requireContext()
         val playerView = binding.playerView
 
-        // 创建渲染工厂
         val renderersFactory = DefaultRenderersFactory(ctx)
 
-        // ========== Android 5.x (API 21-22) 特殊处理 ==========
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.LOLLIPOP_MR1) {  // API 21,22 (Android 5.0, 5.1, 5.1.1)
-            Log.i(TAG, "========== Android 5.x (API ${Build.VERSION.SDK_INT}) 检测到，使用兼容模式 ==========")
+        // 读取用户设置的软解开关
+        val isSoftDecodeEnabled = SP.softDecode
 
-            // 5.x强制使用软解
-            renderersFactory.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+        // 设定模式：如果用户手动开启软解，则优先使用扩展渲染器（如 FFmpeg）
+        renderersFactory.setExtensionRendererMode(
+            if (isSoftDecodeEnabled) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+            else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
+        )
 
-            // 5.x只使用软件解码器
-            renderersFactory.setMediaCodecSelector(object : MediaCodecSelector {
-                override fun getDecoderInfos(
-                    mimeType: String,
-                    requiresSecureDecoder: Boolean,
-                    requiresTunnelingDecoder: Boolean
-                ): MutableList<androidx.media3.exoplayer.mediacodec.MediaCodecInfo> {
+        // 核心逻辑：针对 Android 5.0/5.1 (API 21/22) 的精準保护
+        renderersFactory.setMediaCodecSelector(object : MediaCodecSelector {
+            override fun getDecoderInfos(
+                mimeType: String,
+                requiresSecureDecoder: Boolean,
+                requiresTunnelingDecoder: Boolean
+            ): MutableList<androidx.media3.exoplayer.mediacodec.MediaCodecInfo> {
 
-                    val allInfos = MediaCodecUtil.getDecoderInfos(
-                        mimeType,
-                        requiresSecureDecoder,
-                        requiresTunnelingDecoder
-                    )
+                val allInfos = MediaCodecUtil.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
 
-                    Log.i(TAG, "5.x 可用解码器 for $mimeType: ${allInfos.size}")
-                    allInfos.forEachIndexed { index, info ->
-                        Log.i(TAG, "  [$index] ${info.name} - swOnly=${info.softwareOnly}")
+                // 仅在 Android 5.x 上介入
+                if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.LOLLIPOP_MR1) {
+                    // 如果是 H.265 (HEVC)，强制过滤硬解以防驱动崩溃
+                    if (mimeType == MimeTypes.VIDEO_H265 || mimeType == "video/hevc") {
+                        val swInfos = allInfos.filter { it.softwareOnly }.toMutableList()
+                        Log.i(TAG, "检测到 Android 5.x 设备播放 H.265：已强制开启软解安全模式")
+                        return swInfos
                     }
-
-                    // 只保留软件解码器
-                    val swInfos = allInfos.filter { it.softwareOnly }.toMutableList()
-                    return if (swInfos.isNotEmpty()) swInfos else allInfos
+                    // H.264 (AVC) 保留硬解，确保低端电视播放流畅
                 }
-            })
-        } else {
-            // Android 6.0+ 正常逻辑
-            Log.i(TAG, "Android 6.0+ (API ${Build.VERSION.SDK_INT}) 使用正常模式")
-            renderersFactory.setExtensionRendererMode(
-                if (SP.softDecode) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
-                else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
-            )
-            renderersFactory.setMediaCodecSelector(PlayerMediaCodecSelector())
-        }
 
-        // 在所有版本都开启解码器回退
+                return allInfos
+            }
+        })
+
+        // 开启回退机制：如果一个解码器失败，自动尝试下一个，防止 App 闪退
         renderersFactory.setEnableDecoderFallback(true)
 
-        if (player != null) {
-            player?.release()
-        }
-
-        player = ExoPlayer.Builder(ctx)
-            .setRenderersFactory(renderersFactory)
-            .build()
+        player?.release()
+        player = ExoPlayer.Builder(ctx).setRenderersFactory(renderersFactory).build()
 
         player?.repeatMode = REPEAT_MODE_ALL
         player?.playWhenReady = true
+
+        // 设置监听器
         player?.addListener(object : Player.Listener {
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 if (playerView.measuredHeight <= 0) return
                 val ratio = playerView.measuredWidth.toFloat().div(playerView.measuredHeight.toFloat())
                 val layoutParams = playerView.layoutParams
                 if (ratio < aspectRatio) {
-                    layoutParams?.height =
-                        (playerView.measuredWidth.div(aspectRatio)).toInt()
+                    layoutParams?.height = (playerView.measuredWidth.div(aspectRatio)).toInt()
                     playerView.layoutParams = layoutParams
                 } else if (ratio > aspectRatio) {
-                    layoutParams?.width =
-                        (playerView.measuredHeight.times(aspectRatio)).toInt()
+                    layoutParams?.width = (playerView.measuredHeight.times(aspectRatio)).toInt()
                     playerView.layoutParams = layoutParams
                 }
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 super.onIsPlayingChanged(isPlaying)
-
-                if (tvModel == null) {
-                    Log.e(TAG, "tvModel == null")
-                    return
-                }
-
+                if (tvModel == null) return
                 val tv = tvModel!!
-
                 if (isPlaying) {
                     tv.confirmSourceType()
                     tv.confirmVideoIndex()
                     tv.setErrInfo("")
                     tv.retryTimes = 0
-
-                    val ua = tv.getUserAgent()
-                    val hasCustomUA = tv.hasCustomUserAgent()
-                    Log.i(TAG, "播放成功: ${tv.tv.title}, 自定義UA: $hasCustomUA")
-                } else {
-                    Log.i(TAG, "${tv.tv.title} 播放停止")
                 }
             }
 
@@ -174,25 +143,10 @@ class PlayerFragment : Fragment() {
 
             override fun onPlayerError(error: PlaybackException) {
                 super.onPlayerError(error)
+                val tv = tvModel ?: return
 
-                if (tvModel == null) {
-                    Log.e(TAG, "tvModel == null")
-                    return
-                }
-
-                val tv = tvModel!!
-
-                // 5.x特殊错误处理
-                if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.LOLLIPOP_MR1) {
-                    Log.e(TAG, "5.x 播放错误: ${error.message}", error)
-                    // 直接尝试下一个源
-                    if (!tv.isLastVideo()) {
-                        tv.nextVideo()
-                        tv.setReady(true)
-                        tv.retryTimes = 0
-                        return
-                    }
-                }
+                Log.e(TAG, "播放错误: ${error.message}")
+                error.printStackTrace()
 
                 if (tv.retryTimes < tv.retryMaxTimes) {
                     var last = true
@@ -200,29 +154,22 @@ class PlayerFragment : Fragment() {
                         last = tv.nextSourceType()
                     }
                     tv.setReady(true)
-                    if (last) {
-                        tv.retryTimes++
-                    }
-                    Log.i(
-                        TAG,
-                        "retry ${tv.videoIndex.value} ${tv.getSourceTypeCurrent()} ${tv.retryTimes}/${tv.retryMaxTimes}"
-                    )
+                    if (last) tv.retryTimes++
+                    Log.i(TAG, "重试 ${tv.videoIndex.value} ${tv.getSourceTypeCurrent()} ${tv.retryTimes}/${tv.retryMaxTimes}")
                 } else {
                     if (!tv.isLastVideo()) {
                         tv.nextVideo()
                         tv.setReady(true)
                         tv.retryTimes = 0
                     } else {
-                        tv.setErrInfo(R.string.play_error.getString())
+                        tv.setErrInfo(getString(R.string.play_error))
                     }
                 }
             }
         })
 
         playerView.player = player
-        tvModel?.let {
-            play(it)
-        }
+        tvModel?.let { play(it) }
     }
 
     @OptIn(UnstableApi::class)
@@ -231,54 +178,15 @@ class PlayerFragment : Fragment() {
         this.tvModel = tvModel
         tvModel.setContext(requireContext())
 
-        // 添加播放信息日志
-        Log.i(TAG, "准备播放: ${tvModel.tv.title}")
-        Log.i(TAG, "视频地址: ${tvModel.getVideoUrl()}")
-        Log.i(TAG, "Android版本: ${Build.VERSION.SDK_INT} (${Build.VERSION.RELEASE})")
-
         player?.run {
-            tvModel.getVideoUrl() ?: return
-
-            while (true) {
-                val last = tvModel.isLastVideo()
-                val mediaItem = tvModel.getMediaItem()
-                if (mediaItem == null) {
-                    if (last) {
-                        tvModel.setErrInfo(R.string.play_error.getString())
-                        break
-                    }
-                    tvModel.nextVideo()
-                    continue
-                }
-                val mediaSource = tvModel.getMediaSource()
-                if (mediaSource != null) {
-                    setMediaSource(mediaSource)
-                } else {
-                    setMediaItem(mediaItem)
-                }
-                prepare()
-                break
-            }
+            val mediaItem = tvModel.getMediaItem() ?: return
+            val mediaSource = tvModel.getMediaSource()
+            if (mediaSource != null) setMediaSource(mediaSource) else setMediaItem(mediaItem)
+            prepare()
         }
     }
 
-    // --- 修正后的MediaCodec选择器（用于Android 6.0+）---
-    @OptIn(UnstableApi::class)
-    class PlayerMediaCodecSelector : MediaCodecSelector {
-        override fun getDecoderInfos(
-            mimeType: String,
-            requiresSecureDecoder: Boolean,
-            requiresTunnelingDecoder: Boolean
-        ): MutableList<androidx.media3.exoplayer.mediacodec.MediaCodecInfo> {
-            // 直接返回系统推荐的所有解码器，让ExoPlayer根据性能自动选择
-            return MediaCodecUtil.getDecoderInfos(
-                mimeType,
-                requiresSecureDecoder,
-                requiresTunnelingDecoder
-            )
-        }
-    }
-
+    // 音量控制相关方法
     fun showVolume(visibility: Int) {
         binding.icon.visibility = visibility
         binding.volume.visibility = visibility
