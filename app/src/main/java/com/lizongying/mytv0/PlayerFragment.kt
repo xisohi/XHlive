@@ -11,21 +11,19 @@ import android.view.ViewGroup
 import androidx.annotation.OptIn
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
-import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Player.DISCONTINUITY_REASON_AUTO_TRANSITION
 import androidx.media3.common.Player.REPEAT_MODE_ALL
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.decoder.ffmpeg.FfmpegLibrary
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
-import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
 import com.lizongying.mytv0.data.SourceType
 import com.lizongying.mytv0.databinding.PlayerBinding
 import com.lizongying.mytv0.models.TVModel
-import android.content.Context
 
 class PlayerFragment : Fragment() {
     private var _binding: PlayerBinding? = null
@@ -58,43 +56,21 @@ class PlayerFragment : Fragment() {
         val ctx = requireContext()
         val playerView = binding.playerView
 
+        // 检查 FFmpeg 扩展是否可用（调试用）
+        Log.i(TAG, "FFmpeg available: ${FfmpegLibrary.isAvailable()}")
+
         val renderersFactory = DefaultRenderersFactory(ctx)
 
-        // 读取用户设置的软解开关
-        val isSoftDecodeEnabled = SP.softDecode
-
-        // 设定模式：如果用户手动开启软解，则优先使用扩展渲染器（如 FFmpeg）
+        // 根据用户设置决定渲染器模式
         renderersFactory.setExtensionRendererMode(
-            if (isSoftDecodeEnabled) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+            if (SP.softDecode) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
             else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
         )
 
-        // 核心逻辑：针对 Android 5.0/5.1 (API 21/22) 的精準保护
-        renderersFactory.setMediaCodecSelector(object : MediaCodecSelector {
-            override fun getDecoderInfos(
-                mimeType: String,
-                requiresSecureDecoder: Boolean,
-                requiresTunnelingDecoder: Boolean
-            ): MutableList<androidx.media3.exoplayer.mediacodec.MediaCodecInfo> {
+        // 使用默认的解码器选择器（不再进行手动过滤，让 ExoPlayer 自动选择）
+        renderersFactory.setMediaCodecSelector(MediaCodecSelector.DEFAULT)
 
-                val allInfos = MediaCodecUtil.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
-
-                // 仅在 Android 5.x 上介入
-                if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.LOLLIPOP_MR1) {
-                    // 如果是 H.265 (HEVC)，强制过滤硬解以防驱动崩溃
-                    if (mimeType == MimeTypes.VIDEO_H265 || mimeType == "video/hevc") {
-                        val swInfos = allInfos.filter { it.softwareOnly }.toMutableList()
-                        Log.i(TAG, "检测到 Android 5.x 设备播放 H.265：已强制开启软解安全模式")
-                        return swInfos
-                    }
-                    // H.264 (AVC) 保留硬解，确保低端电视播放流畅
-                }
-
-                return allInfos
-            }
-        })
-
-        // 开启回退机制：如果一个解码器失败，自动尝试下一个，防止 App 闪退
+        // 开启解码器回退机制
         renderersFactory.setEnableDecoderFallback(true)
 
         player?.release()
@@ -103,7 +79,7 @@ class PlayerFragment : Fragment() {
         player?.repeatMode = REPEAT_MODE_ALL
         player?.playWhenReady = true
 
-        // 设置监听器
+        // 添加播放器监听器
         player?.addListener(object : Player.Listener {
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 if (playerView.measuredHeight <= 0) return
