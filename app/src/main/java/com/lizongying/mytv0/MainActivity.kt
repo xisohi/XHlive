@@ -58,7 +58,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
+        // 为 Android 5.x (API 21-22) 默认开启软解
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.LOLLIPOP_MR1) {
+            SP.softDecode = true
+            Log.i(TAG, "Android 5.x 设备，已自动开启软解")
+        }
 //        requestWindowFeature(FEATURE_NO_TITLE)
         window.setFlags(
             WindowManager.LayoutParams.FLAG_FULLSCREEN,
