@@ -61,14 +61,21 @@ class PlayerFragment : Fragment() {
         }
 
         val ctx = requireContext()
-
         val playerView = binding.playerView
 
+        // --- 核心修改：優化渲染工廠配置 ---
         val renderersFactory = DefaultRenderersFactory(ctx)
-        val playerMediaCodecSelector = PlayerMediaCodecSelector()
-        renderersFactory.setMediaCodecSelector(playerMediaCodecSelector)
+
+        // 1. 開啟解碼器回退功能：當硬解崩潰時，自動嘗試尋找其他解碼器，防止 App 閃退
+        renderersFactory.setEnableDecoderFallback(true)
+
+        // 2. 修正媒體解碼選擇器邏輯
+        renderersFactory.setMediaCodecSelector(PlayerMediaCodecSelector())
+
+        // 3. 響應軟硬解開關
         renderersFactory.setExtensionRendererMode(
-            if (SP.softDecode) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
+            if (SP.softDecode) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+            else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
         )
 
         if (player != null) {
@@ -78,11 +85,14 @@ class PlayerFragment : Fragment() {
         player = ExoPlayer.Builder(ctx)
             .setRenderersFactory(renderersFactory)
             .build()
+        // --- 修改結束 ---
+
         player?.repeatMode = REPEAT_MODE_ALL
         player?.playWhenReady = true
         player?.addListener(object : Player.Listener {
             override fun onVideoSizeChanged(videoSize: VideoSize) {
-                val ratio = playerView.measuredWidth.div(playerView.measuredHeight)
+                if (playerView.measuredHeight <= 0) return
+                val ratio = playerView.measuredWidth.toFloat().div(playerView.measuredHeight.toFloat())
                 val layoutParams = playerView.layoutParams
                 if (ratio < aspectRatio) {
                     layoutParams?.height =
@@ -111,13 +121,9 @@ class PlayerFragment : Fragment() {
                     tv.setErrInfo("")
                     tv.retryTimes = 0
 
-                    // 🆕 播放成功时打印UA信息（调试用）
                     val ua = tv.getUserAgent()
                     val hasCustomUA = tv.hasCustomUserAgent()
-                    Log.i(TAG, "播放成功: ${tv.tv.title}, 自定义UA: $hasCustomUA")
-                    if (hasCustomUA) {
-                        Log.i(TAG, "使用的UA: $ua")
-                    }
+                    Log.i(TAG, "播放成功: ${tv.tv.title}, 自定義UA: $hasCustomUA")
                 } else {
                     Log.i(TAG, "${tv.tv.title} 播放停止")
                 }
@@ -179,18 +185,7 @@ class PlayerFragment : Fragment() {
     fun play(tvModel: TVModel) {
         this.tvModel?.releaseMulticastLock()
         this.tvModel = tvModel
-        tvModel.setContext(requireContext())  // 🆕 注入Context，支持RTP播放
-
-        // 🆕 打印UA信息
-        val ua = tvModel.getUserAgent()
-        val hasCustomUA = tvModel.hasCustomUserAgent()
-        Log.i(TAG, "准备播放: ${tvModel.tv.title}")
-        Log.i(TAG, "视频地址: ${tvModel.getVideoUrl()}")
-        Log.i(TAG, "使用自定义UA: $hasCustomUA")
-        Log.i(TAG, "当前UA: $ua")  // 确保这里打印的UA是你设置的
-        if (hasCustomUA) {
-            Log.i(TAG, "UA: $ua")
-        }
+        tvModel.setContext(requireContext())
 
         player?.run {
             tvModel.getVideoUrl() ?: return
@@ -218,6 +213,7 @@ class PlayerFragment : Fragment() {
         }
     }
 
+    // --- 核心修正：正確的 MediaCodec 選擇邏輯 ---
     @OptIn(UnstableApi::class)
     class PlayerMediaCodecSelector : MediaCodecSelector {
         override fun getDecoderInfos(
@@ -225,21 +221,13 @@ class PlayerFragment : Fragment() {
             requiresSecureDecoder: Boolean,
             requiresTunnelingDecoder: Boolean
         ): MutableList<androidx.media3.exoplayer.mediacodec.MediaCodecInfo> {
-            val infos = MediaCodecUtil.getDecoderInfos(
+            // 直接獲取系統所有可用解碼器列表
+            // 不要攔截 H.265 並強行指定 "c2.android.hevc.decoder"，這會導致老電視崩潰
+            return MediaCodecUtil.getDecoderInfos(
                 mimeType,
                 requiresSecureDecoder,
                 requiresTunnelingDecoder
             )
-            if (mimeType == MimeTypes.VIDEO_H265 && !requiresSecureDecoder && !requiresTunnelingDecoder) {
-                if (infos.isNotEmpty()) {
-                    val infosNew = infos.find { it.name == "c2.android.hevc.decoder" }
-                        ?.let { mutableListOf(it) }
-                    if (infosNew != null) {
-                        return infosNew
-                    }
-                }
-            }
-            return infos
         }
     }
 
