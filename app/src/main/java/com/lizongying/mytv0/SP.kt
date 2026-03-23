@@ -66,7 +66,7 @@ object SP {
     const val DEFAULT_CONFIG_URL = ""
     const val DEFAULT_PROXY = ""
     const val DEFAULT_EPG =
-        "https://xhys.xisohi.dpdns.org/e.xml,https://raw.githubusercontent.com/xisohi/XHYSosc/master/e.xml"
+        "https://iptv.xisohi.dpdns.org/e.xml,https://raw.githubusercontent.com/xisohi/CHINA-IPTV/main/e.xml"
     const val DEFAULT_CHANNEL = 0
     const val DEFAULT_SHOW_ALL_CHANNELS = false
     const val DEFAULT_COMPACT_MENU = true
