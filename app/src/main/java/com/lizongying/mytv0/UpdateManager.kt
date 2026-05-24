@@ -149,8 +149,8 @@ class UpdateManager(
         }
     }
 
-    fun checkAndUpdate() {
-        Log.i(TAG, "checkAndUpdate")
+    fun checkAndUpdate(showNoUpdateToast: Boolean = false) {
+        Log.i(TAG, "checkAndUpdate, showNoUpdateToast=$showNoUpdateToast")
 
         if (!hasWritePermission()) {
             "无存储权限，无法下载更新".showToast()
@@ -176,17 +176,31 @@ class UpdateManager(
                         }
                         update = true
                         hasUpdate = true
+                        updateUI(text, update)  // 有更新，显示对话框
                     } else {
                         text = "已是最新版本，不需要更新"
                         hasUpdate = false
+
+                        // 只有手动检查时才显示"已是最新版本"
+                        if (showNoUpdateToast) {
+                            updateUI(text, update)  // 显示提示
+                        } else {
+                            Log.i(TAG, "启动检查：已是最新版本，静默不提示")
+                        }
                     }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error occurred: ${e.message}", e)
                 text = "版本检查异常: ${e.message}"
                 hasUpdate = false
+
+                // 出错时也可以选择是否提示
+                if (showNoUpdateToast) {
+                    updateUI(text, update)
+                } else {
+                    Log.w(TAG, "启动检查失败，静默不提示: ${e.message}")
+                }
             }
-            updateUI(text, update)
         }
     }
 

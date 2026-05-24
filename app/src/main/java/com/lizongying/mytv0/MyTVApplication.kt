@@ -87,9 +87,11 @@ class MyTVApplication : MultiDexApplication() {
                 packageManager.getPackageInfo(packageName, 0).versionCode.toLong()
             }
 
-            // 只初始化，不检查更新（检查更新移到 MainActivity 中）
             updateManager = UpdateManager(this, versionCode)
             updateManager.cleanupApkFilesOnStart()
+
+            // ✅ 启动检查：有更新才提示，无更新静默
+            updateManager.checkAndUpdate(showNoUpdateToast = false)
 
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize UpdateManager", e)

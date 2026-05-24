@@ -430,10 +430,10 @@ class SettingFragment : Fragment() {
                 PERMISSIONS_REQUEST_CODE
             )
         } else {
-            // ✅ 修改：直接调用 updateManager.checkAndUpdate()，并设置 Activity
             val app = requireActivity().application as MyTVApplication
             app.updateManager.setActivity(requireActivity() as? androidx.fragment.app.FragmentActivity)
-            app.updateManager.checkAndUpdate()
+            // ✅ 手动检查：有更新弹窗，无更新也提示"已是最新版本"
+            app.updateManager.checkAndUpdate(showNoUpdateToast = true)
         }
     }
 
@@ -476,10 +476,10 @@ class SettingFragment : Fragment() {
                 }
             }
             if (allPermissionsGranted) {
-                // ✅ 修改：直接调用 updateManager.checkAndUpdate()，并设置 Activity
                 val app = requireActivity().application as MyTVApplication
                 app.updateManager.setActivity(requireActivity() as? androidx.fragment.app.FragmentActivity)
-                app.updateManager.checkAndUpdate()
+                // ✅ 手动检查：有更新弹窗，无更新也提示"已是最新版本"
+                app.updateManager.checkAndUpdate(showNoUpdateToast = true)
             } else {
                 Log.w(TAG, "ask permissions failed")
                 R.string.authorization_failed.showToast()
