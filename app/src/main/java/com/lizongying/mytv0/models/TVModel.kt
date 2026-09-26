@@ -201,7 +201,7 @@ class TVModel(var tv: TV) : ViewModel() {
                 listOf(SourceType.RTSP)
             } else if (scheme.lowercase() == "rtmp") {
                 listOf(SourceType.RTMP)
-            } else if (scheme.lowercase() == "rtp") {
+            } else if (scheme.lowercase() == "rtp" || scheme.lowercase() == "udp") {
                 listOf(SourceType.RTP)
             } else {
                 listOf(SourceType.HLS, SourceType.PROGRESSIVE)

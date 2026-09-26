@@ -29,7 +29,6 @@ class RtpUdpDataSource private constructor(
     private var uri: Uri? = null
     private var multicastGroup: InetAddress? = null
     private var socket: MulticastSocket? = null
-    private var networkInterface: NetworkInterface? = null
 
     // RTP解包相关
     private val rtpBuffer = ByteArray(8192)  // 🆕 增大到8KB
@@ -51,10 +50,16 @@ class RtpUdpDataSource private constructor(
     private var lastSequenceNumber = -1
     private var opened = false
 
+    // 接收循环致命错误：非空时说明流已不可恢复，read() 应抛异常触发重试
+    @Volatile
+    private var receiveLoopFailed: Throwable? = null
+
     companion object {
         const val DEFAULT_SOCKET_TIMEOUT_MILLIS = 15000  // 🆕 15秒超时
         const val DEFAULT_BUFFER_SIZE = 128 * 1024       // 🆕 128KB
         const val QUEUE_SIZE = 2000                       // 🆕 2000队列
+        const val QUEUE_POLL_TIMEOUT_MS = 1000L           // read() 取包超时，避免无限阻塞
+        const val DEFAULT_RTP_PORT = 5004                 // 组播默认端口
         private const val TAG = "RtpUdpDataSource"
 
         @JvmStatic
@@ -74,9 +79,10 @@ class RtpUdpDataSource private constructor(
         }
 
         val host = uri?.host ?: throw IOException("URI host is null")
-        val port = uri?.port ?: throw IOException("URI port is null")
+        val port = uri?.port.takeIf { it != -1 } ?: DEFAULT_RTP_PORT
 
         try {
+            receiveLoopFailed = null
             setupMulticastSocket(host, port)
             startReceiving()
             opened = true
@@ -103,14 +109,15 @@ class RtpUdpDataSource private constructor(
             // 🆕 设置低延迟
             trafficClass = 0x10
 
-            joinGroup(multicastGroup)
-
-            // 🆕 绑定到具体网卡
-            val localAddr = getLocalIpAddress()
-            localAddr?.let {
-                setInterface(it)
-                Log.i(TAG, "Bound to interface: ${it.hostAddress}")
+            // 必须先绑定网卡再加入组播组：多网卡设备上 join 会落在默认网卡，
+            // 顺序颠倒会导致组播帧收不到（setInterface 已废弃，用 setNetworkInterface）
+            val iface = getMulticastNetworkInterface()
+            if (iface != null) {
+                setNetworkInterface(iface)
+                Log.i(TAG, "Bound to interface: ${iface.name}")
             }
+
+            joinGroup(multicastGroup)
 
             loopbackMode = false
             timeToLive = 32
@@ -125,22 +132,27 @@ class RtpUdpDataSource private constructor(
                 try {
                     val packet = DatagramPacket(rtpBuffer, rtpBuffer.size)
 
-                    withTimeout(socketTimeoutMillis.toLong()) {
-                        socket?.receive(packet)
-                    }
+                    // socket 自身带 15s soTimeout，不再用 withTimeout 包裹阻塞调用：
+                    // withTimeout 无法中断阻塞的 receive()，超时边界会把 SocketTimeoutException
+                    // 转成 TimeoutCancellationException，导致接收协程被当成取消而永久退出
+                    socket?.receive(packet)
 
                     if (packet.length > 0) {
                         processRtpPacket(packet)
                     }
-                } catch (e: SocketTimeoutException) {
-                    continue
                 } catch (e: CancellationException) {
+                    // 协程真正被取消（close 或切台）
                     break
+                } catch (e: SocketTimeoutException) {
+                    // 15s 无数据：继续等待
+                    continue
                 } catch (e: Exception) {
                     if (opened) {
-                        Log.e(TAG, "Receive error: ${e.message}")
-                        delay(10)
+                        // 记录致命错误，让 read() 抛异常以触发播放器重试
+                        receiveLoopFailed = e
+                        Log.e(TAG, "Receive loop terminated: ${e.message}")
                     }
+                    break
                 }
             }
         }
@@ -211,38 +223,50 @@ class RtpUdpDataSource private constructor(
         }
         lastSequenceNumber = seqNum
 
-        // 提取并验证MPEG-TS包
-        if (payloadLength > 0 && payloadLength % tsPacketSize == 0) {
-            val tsData = ByteArray(payloadLength)
-            System.arraycopy(data, payloadOffset, tsData, 0, payloadLength)
+        // 提取MPEG-TS包：对齐首包同步字节，容忍尾部不完整包与个别坏包（不再整包丢弃）
+        if (payloadLength > 0) {
+            // 对齐到第一个同步字节 0x47
+            var alignOffset = 0
+            while (alignOffset < payloadLength && data[payloadOffset + alignOffset] != 0x47.toByte()) {
+                alignOffset++
+            }
+            val alignedLength = payloadLength - alignOffset
+            if (alignedLength < tsPacketSize) {
+                Log.w(TAG, "No TS sync found in payload, packet $seqNum")
+                return
+            }
 
-            // 验证所有TS包同步字节(0x47)
-            var valid = true
-            var firstError = -1
-            for (i in 0 until payloadLength step tsPacketSize) {
-                if (tsData[i] != 0x47.toByte()) {
-                    valid = false
-                    if (firstError == -1) firstError = i
+            // 按188分片，逐片校验0x47，坏片丢弃；尾部不足188的残包丢弃
+            val validPackets = alignedLength / tsPacketSize
+            val tsData = ByteArray(validPackets * tsPacketSize)
+            var written = 0
+            for (i in 0 until validPackets) {
+                val src = payloadOffset + alignOffset + i * tsPacketSize
+                if (data[src] == 0x47.toByte()) {
+                    System.arraycopy(data, src, tsData, written, tsPacketSize)
+                    written += tsPacketSize
                 }
             }
 
-            if (valid) {
-                // 入队（增加超时时间）
-                val offered = packetQueue.offer(tsData, 200, TimeUnit.MILLISECONDS)
-                if (offered) {
-                    packetsReceived++
-                    // 每100包输出一次统计
-                    if (packetsReceived % 100 == 0) {
-                        Log.i(TAG, "Stats: received=$packetsReceived, lost=$packetsLost, queue=${packetQueue.size}/$QUEUE_SIZE")
-                    }
-                } else {
-                    Log.w(TAG, "Queue full, dropped packet $seqNum")
+            if (written == 0) {
+                Log.w(TAG, "All TS packets invalid, packet $seqNum")
+                return
+            }
+
+            // 无坏包时直接复用 tsData，避免额外拷贝
+            val validData = if (written == tsData.size) tsData else tsData.copyOf(written)
+
+            // 入队（带超时）
+            val offered = packetQueue.offer(validData, 200, TimeUnit.MILLISECONDS)
+            if (offered) {
+                packetsReceived++
+                // 每100包输出一次统计
+                if (packetsReceived % 100 == 0) {
+                    Log.i(TAG, "Stats: received=$packetsReceived, lost=$packetsLost, queue=${packetQueue.size}/$QUEUE_SIZE")
                 }
             } else {
-                Log.w(TAG, "Invalid TS sync at offset $firstError, packet $seqNum, payload=$payloadLength")
+                Log.w(TAG, "Queue full, dropped packet $seqNum")
             }
-        } else {
-            Log.w(TAG, "Invalid payload length: $payloadLength (seq: $seqNum), expected multiple of $tsPacketSize")
         }
     }
 
@@ -262,15 +286,14 @@ class RtpUdpDataSource private constructor(
             }
         }
 
-        // 🆕 从队列获取新TS包（增加等待时间）
+        // 从队列获取新TS包：带超时 poll，避免流中断/接收循环退出后无限阻塞
         return try {
-            val tsPacket = packetQueue.take()
+            val tsPacket = packetQueue.poll(QUEUE_POLL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 ?: run {
-                    if (opened) {
-                        // 队列空但仍在播放，返回0等待更多数据
-                        return 0
-                    }
-                    return -1  // 已关闭
+                    // 接收循环已死 → 抛异常让播放器触发重试
+                    receiveLoopFailed?.let { throw IOException("Receive loop failed: ${it.message}", it) }
+                    // 未关闭但暂时无数据，返回0等待更多数据
+                    return if (opened) 0 else -1
                 }
 
             readBuffer = ByteBuffer.wrap(tsPacket)
@@ -312,29 +335,38 @@ class RtpUdpDataSource private constructor(
         packetsReceived = 0
         packetsLost = 0
         lastSequenceNumber = -1
+        receiveLoopFailed = null
     }
 
-    private fun getLocalIpAddress(): InetAddress? {
+    private fun getMulticastNetworkInterface(): NetworkInterface? {
         try {
-            val interfaces = NetworkInterface.getNetworkInterfaces()
-            while (interfaces.hasMoreElements()) {
-                val intf = interfaces.nextElement()
-                // 跳过回环和虚拟接口
-                if (intf.isLoopback || !intf.isUp) continue
-
-                val addrs = intf.inetAddresses
-                while (addrs.hasMoreElements()) {
-                    val addr = addrs.nextElement()
-                    if (!addr.isLoopbackAddress && addr is Inet4Address) {
-                        Log.i(TAG, "Found interface: ${intf.name}, IP: ${addr.hostAddress}")
-                        return addr
-                    }
+            val interfaces = NetworkInterface.getNetworkInterfaces().toList()
+            // 优先级：有线 > 无线 > 其他；跳过回环/虚拟/VPN 接口
+            val priority = listOf("eth", "enp", "en", "wlan", "wlp", "wl")
+            for (prefix in priority) {
+                val iface = interfaces.find {
+                    it.isUp && !it.isLoopback && !isVirtualInterface(it) && it.name.startsWith(prefix)
+                }
+                if (iface != null) {
+                    Log.i(TAG, "Selected interface: ${iface.name}")
+                    return iface
                 }
             }
+            val fallback = interfaces.find { it.isUp && !it.isLoopback && !isVirtualInterface(it) }
+            fallback?.let { Log.i(TAG, "Fallback interface: ${it.name}") }
+            return fallback
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to get local IP: ${e.message}")
+            Log.e(TAG, "Failed to get network interface: ${e.message}")
+            return null
         }
-        return InetAddress.getByName("0.0.0.0")
+    }
+
+    private fun isVirtualInterface(intf: NetworkInterface): Boolean {
+        val name = intf.name.lowercase()
+        return name.startsWith("tun") || name.startsWith("tap") ||
+                name.startsWith("ppp") || name.startsWith("vpn") ||
+                name.contains("virtual") || name.contains("veth") ||
+                name.contains("docker") || name.startsWith("lo")
     }
 
     fun getStats(): String {

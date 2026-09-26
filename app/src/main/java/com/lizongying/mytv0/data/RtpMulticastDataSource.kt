@@ -16,7 +16,10 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.CoroutineContext
 
 /**
- * RTP 组播数据源
+ * RTP 组播数据源（带序列号重排序）
+ *
+ * 注意：当前 RtpDataSourceFactory 实际使用的是 RtpUdpDataSource，
+ * 本类暂未被实例化，保留作带重排逻辑的备选实现；两套实现逻辑需保持一致。
  */
 @UnstableApi
 class RtpMulticastDataSource : BaseDataSource(true), CoroutineScope {
@@ -119,8 +122,10 @@ class RtpMulticastDataSource : BaseDataSource(true), CoroutineScope {
 
             if (isRtp) {
                 isRtpMode = true
+                // 先把 nextSequence 设为首包序号，保证首包在 handlePacketSequence 中判定为有序直接入队；
+                // 若先 processRtpPacket 再设 nextSequence，首包会被当成乱序包卡进重排缓冲
+                nextSequence = getSequenceNumber(firstPacket)
                 processRtpPacket(firstPacket)
-                nextSequence = (getSequenceNumber(firstPacket) + 1) and 0xFFFF
 
                 while (isActive) {
                     val packet = readPacketFromSocket()
