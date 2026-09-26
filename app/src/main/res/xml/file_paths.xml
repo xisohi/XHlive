@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- API 29+：下载到应用私有外部目录 getExternalFilesDir(DIRECTORY_DOWNLOADS) -->
     <external-files-path name="downloads" path="Download/" />
+    <!-- API 19-28：下载到公共目录 /sdcard/Download/（Environment.getExternalStorageDirectory()/Download） -->
+    <external-path name="external_download" path="Download/" />
     <files-path name="internal_downloads" path="downloads/" />
 </paths>

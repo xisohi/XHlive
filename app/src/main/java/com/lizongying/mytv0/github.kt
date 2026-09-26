@@ -1,5 +1,6 @@
 package com.lizongying.mytv0
 
+import android.os.Build
 import android.util.Log
 
 object Github {
@@ -16,10 +17,18 @@ object Github {
     @Volatile
     private var currentProxyIndex = 0
 
-    // ========== 配置常量（与 strings.xml 的 app_name 保持一致）==========
-    const val APP_NAME = "XHlive-kitkat"
-    const val APK_FILE_NAME = "$APP_NAME.apk"
-    const val VERSION_FILE_NAME = "$APP_NAME.json"
+    // ========== 分支选择 ==========
+    // kitkat 分支 minSdk=19，仅服务 Android 4.4 (API 19-20) 老设备；
+    // API 21+ 直接引流到 main 分支完整版（minSdk=21），安装后由 main 自身的升级逻辑接管后续更新。
+    private val useMainBranch: Boolean
+        get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP
+
+    val APP_NAME: String
+        get() = if (useMainBranch) "XHlive" else "XHlive-kitkat"
+    val APK_FILE_NAME: String
+        get() = "$APP_NAME.apk"
+    val VERSION_FILE_NAME: String
+        get() = "$APP_NAME.json"
 
     /**
      * APK 下载地址

@@ -203,7 +203,7 @@ class TVModel(var tv: TV) : ViewModel() {
                 path.lowercase().endsWith(".mpd") -> listOf(SourceType.DASH)
                 scheme.lowercase() == "rtsp" -> listOf(SourceType.RTSP)
                 scheme.lowercase() == "rtmp" -> listOf(SourceType.RTMP)
-                scheme.lowercase() == "rtp" -> listOf(SourceType.RTP)
+                scheme.lowercase() == "rtp" || scheme.lowercase() == "udp" -> listOf(SourceType.RTP)
                 else -> listOf(SourceType.HLS, SourceType.PROGRESSIVE)
             }
 

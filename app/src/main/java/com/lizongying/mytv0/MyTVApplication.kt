@@ -90,8 +90,9 @@ class MyTVApplication : MultiDexApplication() {
             updateManager = UpdateManager(this, versionCode)
             updateManager.cleanupApkFilesOnStart()
 
-            // ✅ 启动检查：有更新才提示，无更新静默
-            updateManager.checkAndUpdate(showNoUpdateToast = false)
+            // 启动检查统一由 MainActivity.onCreate 触发（setActivity 后检查，Activity 必然可用）。
+            // 这里不再调用 checkAndUpdate，避免与 MainActivity 重复弹窗
+            // （API 21+ 引流分支是同步返回的，双重调用必然弹两个相同的升级框）。
 
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize UpdateManager", e)

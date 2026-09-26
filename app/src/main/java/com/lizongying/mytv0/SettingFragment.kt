@@ -4,15 +4,18 @@ import MainViewModel
 import MainViewModel.Companion.CACHE_FILE_NAME
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.appcompat.app.AlertDialog
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.marginBottom
@@ -415,12 +418,19 @@ class SettingFragment : Fragment() {
         val context = requireContext()
         val permissionsList = mutableListOf<String>()
 
+        // API 26+：未知来源是特殊权限，不能通过 requestPermissions 授予
+        // （系统直接拒绝，只能去系统设置开启），否则用户永远卡在"授权失败"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
-            permissionsList.add(Manifest.permission.REQUEST_INSTALL_PACKAGES)
+            showEnableUnknownSourcesDialog()
+            return
         }
 
-        checkAndAddPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE, permissionsList)
-        checkAndAddPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE, permissionsList)
+        // 下载到公共目录需要写权限：仅 API 23-28 需要运行时请求
+        // API 19-22 安装时自动授予；API 29+ 下载到应用私有目录无需权限
+        // （README：安装更新不需要 READ_EXTERNAL_STORAGE，且 API 33+ 请求它会被拒）
+        if (Build.VERSION.SDK_INT in Build.VERSION_CODES.M..Build.VERSION_CODES.P) {
+            checkAndAddPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE, permissionsList)
+        }
 
         if (permissionsList.isNotEmpty()) {
             Log.i(TAG, "ask $permissionsList")
@@ -434,6 +444,44 @@ class SettingFragment : Fragment() {
             app.updateManager.setActivity(requireActivity() as? androidx.fragment.app.FragmentActivity)
             // ✅ 手动检查：有更新弹窗，无更新也提示"已是最新版本"
             app.updateManager.checkAndUpdate(showNoUpdateToast = true)
+        }
+    }
+
+    /**
+     * API 26+ 引导开启"允许安装未知应用"（特殊权限，只能去系统设置）
+     */
+    private fun showEnableUnknownSourcesDialog() {
+        AlertDialog.Builder(requireContext())
+            .setTitle("需要开启安装权限")
+            .setMessage("安装新版本需要开启\"允许安装未知应用\"，请前往系统设置开启后重试")
+            .setPositiveButton("去设置") { _, _ ->
+                openUnknownSourcesSettings()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun openUnknownSourcesSettings() {
+        try {
+            // Android 8.0+ 标准设置页
+            val intent = Intent(
+                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:${requireContext().packageName}")
+            )
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "无法打开未知来源设置页", e)
+            try {
+                // 部分厂商设备无该设置页，回退到应用详情页
+                val intent = Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:${requireContext().packageName}")
+                )
+                startActivity(intent)
+            } catch (e2: Exception) {
+                Log.e(TAG, "无法打开应用详情页", e2)
+                R.string.authorization_failed.showToast()
+            }
         }
     }
 

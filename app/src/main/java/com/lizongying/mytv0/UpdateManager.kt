@@ -1,7 +1,9 @@
 package com.lizongying.mytv0
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Uri
 import android.os.Build
@@ -9,6 +11,7 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.fragment.app.FragmentActivity
 import com.lizongying.mytv0.data.Global.gson
@@ -60,8 +63,21 @@ class UpdateManager(
         }
     }
 
+    /**
+     * 写权限检查（按 API 分级）：
+     * - API 29+：下载到应用私有目录，无需任何存储权限
+     * - API 23-28：需要 WRITE_EXTERNAL_STORAGE 运行时权限
+     * - API 19-22：WRITE_EXTERNAL_STORAGE 安装时自动授予
+     */
     private fun hasWritePermission(): Boolean {
-        return Environment.getExternalStorageState() == Environment.MEDIA_MOUNTED
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) return true
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            return ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+            ) == PackageManager.PERMISSION_GRANTED
+        }
+        return true
     }
 
     private fun isNetworkAvailable(): Boolean {
@@ -71,9 +87,16 @@ class UpdateManager(
     }
 
     /**
-     * 获取下载目录 - 使用系统标准下载目录
+     * 获取下载目录：
+     * - API 29+：应用私有外部目录（scoped storage 下写公共目录需要特殊权限，私有目录无需权限，
+     *   file_paths.xml 已配置 external-files-path Download/，安装不受影响）
+     * - API 19-28：系统标准下载目录 /sdcard/Download/
      */
     private fun getDownloadDirectory(): File {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            return context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                ?: File(context.filesDir, "downloads")
+        }
         // 使用系统标准下载目录 /sdcard/Download/，更可靠
         return File(Environment.getExternalStorageDirectory(), "Download").apply {
             if (!exists()) {
@@ -159,6 +182,19 @@ class UpdateManager(
 
         Github.resetProxy()
 
+        // API 21+：跳过版本号比较，直接引流到 main 分支完整版（XHlive.apk）。
+        // 原理：当前是 kitkat 精简版，API 21+ 设备应使用功能完整的 main 版，
+        // 安装完成后由 main 分支自身的升级逻辑接管后续更新。
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            Log.i(TAG, "API ${Build.VERSION.SDK_INT} >= 21, 直接升级完整版 XHlive")
+            hasUpdate = true
+            updateUI(
+                "检测到您的设备支持完整版 XHlive（Android 5.0+ 完整功能版）\n\n是否立即下载升级？",
+                true
+            )
+            return
+        }
+
         CoroutineScope(Dispatchers.Main).launch {
             var text = "版本获取失败"
             var update = false
@@ -230,7 +266,7 @@ class UpdateManager(
         }
     }
 
-    private fun startDownload(release: ReleaseResponse) {
+    private fun startDownload(release: ReleaseResponse?) {
         if (!hasWritePermission()) {
             "无存储权限，无法下载".showToast()
             return
@@ -560,7 +596,8 @@ class UpdateManager(
 
     override fun onConfirm() {
         if (hasUpdate) {
-            release?.let { startDownload(it) }
+            // 引流路径（API 21+）无版本信息，release 为 null，仍可直接下载
+            startDownload(release)
         } else {
             Log.i(TAG, "用户确认，无更新")
         }
