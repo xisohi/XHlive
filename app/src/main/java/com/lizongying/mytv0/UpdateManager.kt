@@ -23,7 +23,6 @@ import com.lizongying.mytv0.requests.HttpClient
 import kotlinx.coroutines.*
 import okhttp3.Request as OkHttpRequest
 import java.io.File
-import java.lang.ref.WeakReference
 
 class UpdateManager(
     private val context: Context,
@@ -84,14 +83,20 @@ class UpdateManager(
     }
 
     fun destroy() {
-        downloadReceiver?.let {
-            try { context.unregisterReceiver(it) } catch (_: Exception) {}
-        }
+        unregisterDownloadReceiver()
         progressRunnable?.let { progressHandler?.removeCallbacks(it) }
+        progressHandler?.removeCallbacksAndMessages(null)
         isDownloading = false
     }
 
     // ==================== 私有方法 ====================
+
+    private fun unregisterDownloadReceiver() {
+        downloadReceiver?.let {
+            try { context.unregisterReceiver(it) } catch (_: Exception) {}
+            downloadReceiver = null
+        }
+    }
 
     private fun isNetworkAvailable() =
         (context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager)
@@ -139,18 +144,31 @@ class UpdateManager(
         }
 
         CoroutineScope(Dispatchers.Main).launch {
-            val url = Github.getApkUrl()
+            // 优先使用服务端下发的 apk_url，缺失时回退到硬编码地址
+            val url = release.apk_url?.takeIf { it.isNotBlank() } ?: Github.getApkUrl()
 
-            // 探测URL可用性
+            // 探测URL可用性（部分代理不支持 HEAD，4xx 时改用 GET+Range 重探）
             val code = withContext(Dispatchers.IO) {
                 try {
-                    HttpClient.okHttpClient.newCall(
+                    val headCode = HttpClient.okHttpClient.newCall(
                         OkHttpRequest.Builder().url(url).head().build()
-                    ).execute().code
+                    ).execute().use { it.code }
+                    if (headCode == 200) {
+                        200
+                    } else if (headCode in 400..499) {
+                        // HEAD 被代理拒绝（405/403 等），用 GET 范围请求验证真实可达性
+                        try {
+                            HttpClient.okHttpClient.newCall(
+                                OkHttpRequest.Builder().url(url).header("Range", "bytes=0-0").get().build()
+                            ).execute().use { it.code }
+                        } catch (_: Exception) { -1 }
+                    } else {
+                        headCode
+                    }
                 } catch (_: Exception) { -1 }
             }
 
-            if (code != 200) {
+            if (code != 200 && code != 206) {
                 handleDownloadError("下载链接不可用 (HTTP $code)")
                 return@launch
             }
@@ -208,7 +226,7 @@ class UpdateManager(
     private suspend fun reportProgress(total: Long, downloaded: Long) {
         if (total <= 0) return
         val progress = (downloaded * 100 / total).toInt()
-        if (progress % 10 == 0 && progress != lastProgress) {
+        if (progress in 1..99 && progress % 10 == 0 && progress != lastProgress) {
             lastProgress = progress
             withContext(Dispatchers.Main) { toast("下载进度: $progress%") }
         }
@@ -216,6 +234,7 @@ class UpdateManager(
 
     private fun downloadWithManager(url: String, versionName: String) {
         isDownloading = true
+        unregisterDownloadReceiver() // 防止上次下载残留的接收器重复注册
         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
 
         val request = DownloadManager.Request(Uri.parse(url)).apply {
@@ -238,6 +257,7 @@ class UpdateManager(
                         onDownloadComplete()
                     } else {
                         toast("下载失败")
+                        unregisterDownloadReceiver()
                         isDownloading = false
                     }
                 }
@@ -254,10 +274,11 @@ class UpdateManager(
                         DownloadManager.STATUS_SUCCESSFUL -> onDownloadComplete()
                         DownloadManager.STATUS_FAILED -> {
                             toast("下载失败")
+                            unregisterDownloadReceiver()
                             isDownloading = false
                         }
                         else -> {
-                            if (progress in 0..99 && progress % 10 == 0 && progress != lastProgress) {
+                            if (progress in 1..99 && progress % 10 == 0 && progress != lastProgress) {
                                 lastProgress = progress
                                 toast("下载进度: $progress%")
                             }
@@ -284,6 +305,7 @@ class UpdateManager(
 
     private fun onDownloadComplete() {
         progressRunnable?.let { progressHandler?.removeCallbacks(it) }
+        unregisterDownloadReceiver()
         isDownloading = false
 
         val file = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), APK_NAME)
@@ -308,9 +330,11 @@ class UpdateManager(
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
 
-            if (intent.resolveActivity(context.packageManager) != null) {
+            // Android 11+ 包可见性下 resolveActivity 可能返回 null，直接 startActivity 并捕获异常
+            try {
                 context.startActivity(intent)
-            } else {
+            } catch (e: Exception) {
+                Log.e(TAG, "未找到安装程序", e)
                 toast("未找到安装程序")
             }
         } catch (e: Exception) {

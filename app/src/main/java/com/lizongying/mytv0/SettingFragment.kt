@@ -44,6 +44,7 @@ class SettingFragment : Fragment() {
         const val TAG = "SettingFragment"
         const val PERMISSIONS_REQUEST_CODE = 1
         const val PERMISSION_READ_EXTERNAL_STORAGE_REQUEST_CODE = 2
+        const val PERMISSION_NOTIFICATION_REQUEST_CODE = 3
     }
 
     override fun onCreateView(
@@ -420,13 +421,19 @@ class SettingFragment : Fragment() {
             // Android 5.0-7.1 需要在设置中手动开启"未知来源"
         }
 
-        // 检查存储权限
+        // 存储权限按 API 分级（minSdk 21 → 覆盖 Android 5.0~13+）
+        // - API 21-22：OkHttp 直下到应用私有目录，无需任何存储权限
+        // - API 23-28：DownloadManager 写公共 Downloads 目录，必须 READ+WRITE 运行时权限
+        // - API 29+：WRITE_EXTERNAL_STORAGE 已废弃（targetSdk 35 下请求必被拒），
+        //   DownloadManager 由系统服务写入公共目录，无需权限
         val permissionsList = mutableListOf<String>()
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-            permissionsList.add(Manifest.permission.READ_EXTERNAL_STORAGE)
-        }
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-            permissionsList.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        if (Build.VERSION.SDK_INT in Build.VERSION_CODES.M..Build.VERSION_CODES.P) {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                permissionsList.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                permissionsList.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            }
         }
 
         if (permissionsList.isNotEmpty()) {
@@ -436,8 +443,18 @@ class SettingFragment : Fragment() {
                 permissionsList.toTypedArray(),
                 PERMISSIONS_REQUEST_CODE
             )
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            // Android 13+ 请求通知权限（仅影响下载完成通知显示，拒绝不阻断更新）
+            Log.i(TAG, "请求通知权限")
+            ActivityCompat.requestPermissions(
+                requireActivity(),
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                PERMISSION_NOTIFICATION_REQUEST_CODE
+            )
         } else {
-            Log.i(TAG, "✅ 已有所有权限，开始检查更新")
+            Log.i(TAG, "✅ 无需额外权限，开始检查更新")
             updateManager.checkAndUpdate()
         }
     }
@@ -523,11 +540,16 @@ class SettingFragment : Fragment() {
                 Log.w(TAG, "❌ 存储权限被拒绝")
                 Toast.makeText(context, "需要存储权限才能下载更新", Toast.LENGTH_LONG).show()
             }
+        } else if (requestCode == PERMISSION_NOTIFICATION_REQUEST_CODE) {
+            // Android 13+ 通知权限：无论授予与否都继续（仅影响下载通知显示）
+            Log.i(TAG, "通知权限回调: ${grantResults.contentToString()}，继续检查更新")
+            updateManager.checkAndUpdate()
         }
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
+        updateManager.destroy()
         _binding = null
     }
 }
