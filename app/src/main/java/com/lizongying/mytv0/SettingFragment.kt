@@ -477,7 +477,9 @@ class SettingFragment : Fragment() {
     }
 
     private fun checkAndAddPermission(context: Context, permission: String, permissionsList: MutableList<String>) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+        // READ_EXTERNAL_STORAGE 仅在 API 23-32 需要运行时权限：
+        // API 21-22 安装时已授予；API 33+ 已废弃（请求必被拒），直接尝试读取
+        if (Build.VERSION.SDK_INT in Build.VERSION_CODES.M..Build.VERSION_CODES.S_V2 &&
             ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED) {
             permissionsList.add(permission)
         }
@@ -544,6 +546,16 @@ class SettingFragment : Fragment() {
             // Android 13+ 通知权限：无论授予与否都继续（仅影响下载通知显示）
             Log.i(TAG, "通知权限回调: ${grantResults.contentToString()}，继续检查更新")
             updateManager.checkAndUpdate()
+        } else if (requestCode == PERMISSION_READ_EXTERNAL_STORAGE_REQUEST_CODE) {
+            // 本地文件导入（file:// 配置地址）的权限回调
+            val allGranted = grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+            if (allGranted) {
+                Log.i(TAG, "✅ 存储权限授予成功，继续导入本地配置")
+                viewModel.importFromUri(uri)
+            } else {
+                Log.w(TAG, "❌ 存储权限被拒绝，无法导入本地配置")
+                Toast.makeText(context, "需要存储权限才能导入本地配置", Toast.LENGTH_LONG).show()
+            }
         }
     }
 
